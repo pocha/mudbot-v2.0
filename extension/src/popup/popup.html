@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: system-ui, sans-serif; width: 280px; padding: 12px; }
+      section { margin-bottom: 12px; }
+      input, button { width: 100%; margin-top: 4px; padding: 6px; box-sizing: border-box; }
+      #recaptcha-container { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <section id="auth-section">
+      <div id="login-form">
+        <input id="phone" placeholder="+1 555 000 1111" />
+        <button id="send-code">Send code</button>
+        <div id="recaptcha-container"></div>
+      </div>
+      <div id="code-form" style="display: none">
+        <input id="code" placeholder="Verification code" />
+        <button id="confirm-code">Confirm</button>
+      </div>
+      <p id="status"></p>
+    </section>
+
+    <section id="role-section" style="display: none">
+      <p>Assign this open WhatsApp Web tab's role:</p>
+      <button id="set-number-a">This is Number A (business)</button>
+      <button id="set-number-b">This is Number B (assistant)</button>
+      <p id="role-status"></p>
+    </section>
+
+    <section id="dump-section" style="display: none">
+      <p>Offline testing: export this tab's visible conversation history.</p>
+      <button id="dump-conversation">Dump conversation</button>
+      <p id="dump-status"></p>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

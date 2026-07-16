@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "WätØböt Assistant",
+  "version": "0.1.0",
+  "description": "WhatsApp assistant: learns from your conversations, drafts and posts on your behalf, and turns orders into sheet rows.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://*.cloudfunctions.net/*",
+    "https://*.run.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "WätØböt Assistant"
+  }
+}

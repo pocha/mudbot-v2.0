@@ -1,0 +1,20 @@
+{
+  "name": "mudbot-v2",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "functions",
+    "mcp-workspace-server",
+    "mcp-whatsapp-server",
+    "mcp-scheduler-server",
+    "extension",
+    "scripts"
+  ],
+  "scripts": {
+    "emulators": "firebase emulators:start --only functions,firestore",
+    "build": "npm run build --workspaces --if-present",
+    "review-customer": "npm run review-customer --workspace scripts --",
+    "train-from-dump": "npm run train-from-dump --workspace scripts --",
+    "simulate": "npm run simulate --workspace scripts --"
+  }
+}

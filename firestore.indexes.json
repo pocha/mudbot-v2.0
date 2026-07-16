@@ -1,0 +1,25 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "commands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "memories",
+      "fieldPath": "embedding",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        {
+          "queryScope": "COLLECTION",
+          "vectorConfig": { "dimension": 768, "flat": {} }
+        }
+      ]
+    }
+  ]
+}
