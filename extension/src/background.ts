@@ -1,6 +1,6 @@
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { auth, db } from "./firebaseClient";
-import { API_BASE_URL, getRoleForTab, getTabForRole } from "./config";
+import { API_BASE_URL, getAssistantJid, getWhatsAppTabId, setWhatsAppTabId } from "./config";
 import type { CommandDoc } from "./commandTypes";
 
 // Manifest V3 service workers are not persistent — Chrome can idle-kill this
@@ -25,28 +25,32 @@ async function apiFetch(path: string, body: unknown) {
   });
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.kind === "whoAmI" && sender.tab?.id != null) {
-    getRoleForTab(sender.tab.id).then(sendResponse);
-    return true;
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.kind === "register_tab" && sender.tab?.id != null) {
+    setWhatsAppTabId(sender.tab.id);
+    return;
   }
+
   if (message.kind === "whatsapp_message") {
-    apiFetch("/ingest", {
-      rawText: message.rawText,
-      sourceJid: message.sourceJid,
-      direction: message.direction,
-    });
-  }
-  if (message.kind === "whatsapp_instruction") {
-    apiFetch("/instruct", { rawText: message.rawText });
+    (async () => {
+      const assistantJid = await getAssistantJid();
+      // The one chat marked as "the assistant" is where the owner gives
+      // instructions; every other chat in this same session is ordinary
+      // business traffic and gets passively ingested regardless of direction.
+      if (assistantJid && message.jid === assistantJid && message.direction === "incoming") {
+        await apiFetch("/instruct", { rawText: message.rawText });
+      } else {
+        await apiFetch("/ingest", { rawText: message.rawText, sourceJid: message.jid, direction: message.direction });
+      }
+    })();
   }
 });
 
 /**
- * Extension-bridge execution: watches this user's pending commands and dispatches
- * each to whichever tab is registered for the command's executeAs role. This is
- * the only place the extension talks to Firestore's commands collection —
- * everything upstream of this just decided *that* something should be sent.
+ * Extension-bridge execution: watches this user's pending commands and
+ * dispatches each to the one registered WhatsApp tab — there's only one
+ * session, so the only thing that varies per command is which chat it targets
+ * (the assistant chat vs. a real customer/group jid), not which tab executes it.
  *
  * NOTE (scaffold simplification): this sends immediately on "pending" rather
  * than waiting for a YES/STOP reply in the assistant chat first. Wiring the
@@ -59,9 +63,9 @@ function watchCommands(uid: string) {
     snap.docChanges().forEach(async (change) => {
       if (change.type !== "added") return;
       const command = change.doc.data() as CommandDoc;
-      const tabId = await getTabForRole(command.executeAs);
+      const tabId = await getWhatsAppTabId();
       if (tabId == null) {
-        console.warn(`[mudbot-v2.0] no tab registered for role ${command.executeAs}, command stays pending`);
+        console.warn("[mudbot-v2.0] no WhatsApp tab registered yet, command stays pending");
         return;
       }
       chrome.tabs.sendMessage(

@@ -1,25 +1,30 @@
 // TODO: point these at your deployed Cloud Functions / Cloud Run URLs.
 export const API_BASE_URL = "https://us-central1-mudbot-v2.cloudfunctions.net";
 
-export type SessionRole = "numberA" | "numberB";
+const WHATSAPP_TAB_KEY = "whatsappTabId";
+const ASSISTANT_JID_KEY = "assistantJid";
 
-export async function getRoleForTab(tabId: number): Promise<SessionRole | null> {
-  const key = `role:${tabId}`;
-  const stored = await chrome.storage.local.get(key);
-  return stored[key] ?? null;
+/** There's a single WhatsApp Web session (one business account) to track, so
+ * just one tab id — set by the content script on load, read by background when
+ * dispatching a queued command back into the page. */
+export async function getWhatsAppTabId(): Promise<number | null> {
+  const stored = await chrome.storage.local.get(WHATSAPP_TAB_KEY);
+  return stored[WHATSAPP_TAB_KEY] ?? null;
 }
 
-export async function getTabForRole(role: SessionRole): Promise<number | null> {
-  const key = `tabForRole:${role}`;
-  const stored = await chrome.storage.local.get(key);
-  return stored[key] ?? null;
+export async function setWhatsAppTabId(tabId: number): Promise<void> {
+  await chrome.storage.local.set({ [WHATSAPP_TAB_KEY]: tabId });
 }
 
-/** Set once per tab from the popup, while that WhatsApp Web tab is open and
- * focused — sidesteps needing to parse WhatsApp's own multi-account URL scheme. */
-export async function setRoleForTab(tabId: number, role: SessionRole): Promise<void> {
-  await chrome.storage.local.set({
-    [`role:${tabId}`]: role,
-    [`tabForRole:${role}`]: tabId,
-  });
+/** The one chat, within that session, treated as talking to the assistant —
+ * defaults to WhatsApp's own "Message Yourself" self-chat (see the popup's
+ * "Use self-chat" button), but can be reassigned to any jid. Everything else
+ * observed in the session is ordinary business traffic. */
+export async function getAssistantJid(): Promise<string | null> {
+  const stored = await chrome.storage.local.get(ASSISTANT_JID_KEY);
+  return stored[ASSISTANT_JID_KEY] ?? null;
+}
+
+export async function setAssistantJid(jid: string): Promise<void> {
+  await chrome.storage.local.set({ [ASSISTANT_JID_KEY]: jid });
 }

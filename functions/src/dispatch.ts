@@ -10,14 +10,14 @@ async function getAssistantJid(uid: string): Promise<string> {
   return user.assistantJid;
 }
 
-/** Fire-and-forget notification to the user's assistant chat (Number B) — used for
+/** Fire-and-forget notification to the owner's assistant chat — used for
  * suggestions awaiting yes/no, and FYIs after an auto-acted pattern executes. This
- * itself goes through the same async whatsapp tool as any other WhatsApp send. */
+ * itself goes through the same async whatsapp tool as any other WhatsApp send;
+ * the only thing that distinguishes it is the target jid. */
 export async function notifyUser(uid: string, text: string): Promise<void> {
   const assistantJid = await getAssistantJid(uid);
   await callTool("whatsapp/send_whatsapp_message", {
     uid,
-    executeAs: "numberB",
     target: { jid: assistantJid, displayName: "assistant" },
     text,
   });

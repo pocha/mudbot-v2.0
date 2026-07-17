@@ -23,11 +23,12 @@
       <p id="status"></p>
     </section>
 
-    <section id="role-section" style="display: none">
-      <p>Assign this open WhatsApp Web tab's role:</p>
-      <button id="set-number-a">This is Number A (business)</button>
-      <button id="set-number-b">This is Number B (assistant)</button>
-      <p id="role-status"></p>
+    <section id="assistant-section" style="display: none">
+      <p>Which chat should the assistant treat as instructions from you?</p>
+      <button id="use-self-chat">Use "Message Yourself" (recommended)</button>
+      <input id="manual-jid" placeholder="or paste a jid manually" />
+      <button id="set-manual-jid">Set manually</button>
+      <p id="assistant-status"></p>
     </section>
 
     <section id="dump-section" style="display: none">

@@ -66,10 +66,9 @@ export type PatternStage = "silent" | "suggest" | "auto_act";
 
 export interface CommandDoc {
   type: "send_whatsapp_message";
-  // Which linked WhatsApp Web session should execute this: numberA (business,
-  // for customer/group-facing sends) or numberB (assistant identity, for
-  // notifications/confirmations/FYIs the user reads as messages from "the bot").
-  executeAs: "numberA" | "numberB";
+  // There's a single WhatsApp Web session per business account, so the only
+  // thing that varies per command is which chat it targets — the owner's own
+  // assistant chat (a notification/confirmation) or a real customer/group jid.
   target: { jid: string; displayName: string };
   text: string;
   status: "pending" | "confirmed" | "sent" | "rejected";
@@ -92,8 +91,10 @@ export interface GroupDoc {
 
 export interface UserDoc {
   phone: string;
-  assistantJid: string; // Number B — where suggestions/FYIs/confirm prompts are sent
-  businessJid: string; // Number A — where real customer traffic and outbound actions happen
+  // The one chat, within the owner's single WhatsApp Web session, that's treated
+  // as talking to the assistant — defaults to WhatsApp's own "Message Yourself"
+  // self-chat, but can be reassigned to any chat from the popup.
+  assistantJid: string;
   googleOAuthTokenRef?: string; // Secret Manager pointer, set once Workspace is connected
 }
 

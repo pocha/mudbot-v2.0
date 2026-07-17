@@ -4,16 +4,19 @@ A WhatsApp assistant for a small business owner (e.g. a bakery run over WhatsApp
 passively learns from real conversations and, on top of that, drafts messages, posts
 to groups, and turns customer orders into spreadsheet rows — either when explicitly
 told to, or on its own once a pattern has earned enough trust. This README covers
-setup; architecture rationale (why two WhatsApp sessions, why everything is an MCP
-tool call, how pattern confidence works) lives in code comments near the relevant
-modules — start at `functions/src/core.ts` and `functions/src/policy/patterns.ts`.
+setup; architecture rationale (why everything is an MCP tool call, how pattern
+confidence works) lives in code comments near the relevant modules — start at
+`functions/src/core.ts` and `functions/src/policy/patterns.ts`.
 
 ## Architecture at a glance
 
-- **Client**: a Chrome extension (Manifest V3) driving **two WhatsApp Web sessions**
-  — Number A (the real business number, read for context and where real actions
-  execute) and Number B (an assistant identity the owner chats with for
-  instructions/confirmations). Firebase Auth (phone) gates who's who.
+- **Client**: a Chrome extension (Manifest V3) driving a **single WhatsApp Web
+  session** on the owner's real business number. One chat within that same
+  session — by default WhatsApp's own "Message Yourself" self-chat — is marked as
+  the assistant channel for instructions/confirmations; everything else observed
+  in the session is ordinary business traffic. This deliberately avoids needing a
+  second WhatsApp account (and its own device-limit budget) just to talk to the
+  assistant. Firebase Auth (phone) gates who's who.
 - **Server**: Firebase Cloud Functions running Genkit flows (`synthesize` →
   `determineAction`) against Gemini/Vertex AI, with Firestore's native vector
   search as the per-user memory store.
@@ -126,10 +129,11 @@ there first if one doesn't exist yet), and point `extension/src/config.ts`'s
 Then in Chrome: `chrome://extensions` → enable Developer mode → **Load unpacked**
 → select `extension/dist`.
 
-Two WhatsApp Web tabs are expected: open `web.whatsapp.com` in each (two separate
-logins/profiles), sign into the extension popup with phone auth, and use the
-popup's role buttons to mark one tab Number A (business) and the other Number B
-(assistant).
+Open `web.whatsapp.com` in a tab and log in as usual — just the one session, on
+the business number. Sign into the extension popup with phone auth, then use the
+popup's assistant-chat picker: **"Use Message Yourself (recommended)"** to default
+to WhatsApp's own self-chat as the instruction channel, or paste a specific jid
+manually if you'd rather use a different chat.
 
 **Known gap**: the actual DOM scraping/sending logic in
 `extension/src/whatsappAdapter.ts` is stubbed out (see "Known gaps" below) —

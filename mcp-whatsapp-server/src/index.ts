@@ -29,15 +29,13 @@ function buildServer(): McpServer {
       inputSchema: {
         uid: z.string(),
         patternId: z.string().optional(),
-        executeAs: z.enum(["numberA", "numberB"]).default("numberA"),
         target: z.object({ jid: z.string(), displayName: z.string() }),
         text: z.string(),
       },
     },
-    async ({ uid, patternId, executeAs, target, text }) => {
+    async ({ uid, patternId, target, text }) => {
       const ref = await getFirestore().collection(`users/${uid}/commands`).add({
         type: "send_whatsapp_message",
-        executeAs,
         target,
         text,
         patternId,

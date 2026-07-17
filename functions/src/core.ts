@@ -45,7 +45,8 @@ async function buildResolutionNotes(uid: string, rawText: string): Promise<strin
 }
 
 /**
- * Passive stream: every message from Number A is stored as memory, and classified
+ * Passive stream: every message in the business WhatsApp session (other than the
+ * owner's own assistant chat) is stored as memory, and classified
  * for actionable shape. A message never seen before (no matching learned pattern)
  * just sits as memory — nothing proactive happens until the user explicitly
  * instructs on it once (see instructCore). Once a pattern exists, later similar
@@ -97,7 +98,7 @@ export async function ingestCore(uid: string, input: IngestInput) {
 }
 
 /**
- * Explicit instruction (Number B chat, or extension UI). Always attempts to
+ * Explicit instruction (the owner's assistant chat, or extension UI). Always attempts to
  * resolve and act — this is the path that teaches the system new patterns.
  */
 export async function instructCore(uid: string, input: InstructInput) {

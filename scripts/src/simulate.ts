@@ -6,10 +6,11 @@
  * instruction (goes through instructCore). After each turn it prints:
  *   - the decision made (kind, tool, reasoning)
  *   - any WhatsApp message that would go out and WHO it's addressed to —
- *     "owner" (assistant chat, Number B) or "customer/group" (Number A) —
- *     inferred from the executeAs/target on whatever `commands` doc(s) got
- *     created during this turn, since notifyUser() and real sends both go
- *     through the same send_whatsapp_message tool. No special-casing needed.
+ *     "owner" (the assistant chat) or "customer/group" (anything else) —
+ *     inferred by comparing the target jid on whatever `commands` doc(s) got
+ *     created during this turn against the user's stored assistantJid, since
+ *     notifyUser() and real sends both go through the same
+ *     send_whatsapp_message tool. No special-casing needed.
  *   - any non-WhatsApp tool call result (e.g. a sheet_update)
  *   - whether a memory entry was written (only the customer/passive path does)
  *
@@ -30,9 +31,9 @@ import { getFirestore } from "firebase-admin/firestore";
 initializeApp();
 
 import { ingestCore, instructCore } from "../../functions/src/core";
-import type { CommandDoc } from "../../functions/src/types/domain";
+import type { CommandDoc, UserDoc } from "../../functions/src/types/domain";
 
-async function reportNewCommands(uid: string, since: Date) {
+async function reportNewCommands(uid: string, since: Date, assistantJid: string | undefined) {
   const db = getFirestore();
   const snap = await db.collection(`users/${uid}/commands`).where("createdAt", ">=", since).get();
   if (snap.empty) {
@@ -41,7 +42,7 @@ async function reportNewCommands(uid: string, since: Date) {
   }
   for (const doc of snap.docs) {
     const c = doc.data() as CommandDoc;
-    const to = c.executeAs === "numberB" ? "owner" : "customer/group";
+    const to = c.target.jid === assistantJid ? "owner" : "customer/group";
     console.log(`  -> {to: "${to}", target: "${c.target.displayName}", message: "${c.text}"}`);
   }
 }
@@ -51,6 +52,12 @@ async function main() {
   if (!uid) {
     console.error("usage: simulate <uid>");
     process.exit(1);
+  }
+
+  const userDoc = (await getFirestore().doc(`users/${uid}`).get()).data() as UserDoc | undefined;
+  const assistantJid = userDoc?.assistantJid;
+  if (!assistantJid) {
+    console.warn('no assistantJid on file for this uid yet — every send will be reported as "customer/group"');
   }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -75,12 +82,12 @@ async function main() {
       if ("decision" in result && result.decision) {
         console.log(`  decision: ${result.decision.kind}${result.decision.toolName ? ` -> ${result.decision.toolName}` : ""} — ${result.decision.reasoning}`);
       }
-      await reportNewCommands(uid, turnStart);
+      await reportNewCommands(uid, turnStart, assistantJid);
     } else {
       const result = await instructCore(uid, { rawText: message });
       console.log(`\n  decision: ${result.decision.kind}${result.decision.toolName ? ` -> ${result.decision.toolName}` : ""} — ${result.decision.reasoning}`);
       if (result.executionResult) console.log(`  tool result: ${JSON.stringify(result.executionResult)}`);
-      await reportNewCommands(uid, turnStart);
+      await reportNewCommands(uid, turnStart, assistantJid);
     }
 
     console.log("");

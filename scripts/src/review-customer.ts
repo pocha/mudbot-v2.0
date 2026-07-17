@@ -58,7 +58,7 @@ async function main() {
   for (const doc of pending.docs) {
     const c = doc.data();
     const ageMs = Date.now() - (c.createdAt instanceof Timestamp ? c.createdAt.toMillis() : new Date(c.createdAt).getTime());
-    console.log(`- ${doc.id}: to ${c.target?.displayName} via ${c.executeAs}, pending for ${Math.round(ageMs / 60000)} min`);
+    console.log(`- ${doc.id}: to ${c.target?.displayName}, pending for ${Math.round(ageMs / 60000)} min`);
   }
 
   console.log("");

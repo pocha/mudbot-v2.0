@@ -1,40 +1,27 @@
 import { createWhatsAppAdapter } from "./whatsappAdapter";
-import type { SessionRole } from "./config";
 
 const adapter = createWhatsAppAdapter();
 
-let role: SessionRole | null = null;
+// A single WhatsApp Web session (the business account) is all there is to
+// track — register this tab so background knows where to dispatch queued
+// commands, and forward every observed message for background to route
+// (assistant chat -> instruction, anything else -> passive ingest).
+chrome.runtime.sendMessage({ kind: "register_tab" });
 
-async function init() {
-  role = await chrome.runtime.sendMessage({ kind: "whoAmI" });
-  if (!role) {
-    console.warn("[mudbot-v2.0] this tab has no role assigned yet — set it from the extension popup");
-    return;
-  }
-
-  adapter.observe((msg) => {
-    if (role === "numberA") {
-      // Every message on the business number is passively ingested, regardless
-      // of direction — the server decides what, if anything, it means.
-      chrome.runtime.sendMessage({
-        kind: "whatsapp_message",
-        role,
-        rawText: msg.text,
-        sourceJid: msg.jid,
-        direction: msg.direction,
-      });
-    } else if (role === "numberB" && msg.direction === "incoming") {
-      // On the assistant number, an incoming message is the user talking to
-      // the assistant — i.e. an explicit instruction.
-      chrome.runtime.sendMessage({ kind: "whatsapp_instruction", rawText: msg.text });
-    }
+adapter.observe((msg) => {
+  chrome.runtime.sendMessage({
+    kind: "whatsapp_message",
+    jid: msg.jid,
+    displayName: msg.displayName,
+    rawText: msg.text,
+    direction: msg.direction,
   });
-}
+});
 
-// Background dispatches pending commands here once it's decided (per pattern
-// stage / confirm policy) that this tab's session should actually send something.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.kind === "execute_send" && role) {
+  // Background dispatches queued commands here once it's decided (per pattern
+  // stage / confirm policy) that something should actually be sent.
+  if (message.kind === "execute_send") {
     adapter
       .sendMessage(message.target.jid, message.text)
       .then(() => sendResponse({ ok: true }))
@@ -51,6 +38,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
-});
 
-init();
+  // Triggered from the popup's "Use self-chat as assistant" button.
+  if (message.kind === "get_self_jid") {
+    adapter
+      .getSelfJid()
+      .then((jid) => sendResponse({ ok: true, jid }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+});

@@ -30,6 +30,11 @@ export interface WhatsAppAdapter {
    * popup's "Dump conversation" button — offline-testing input, see
    * scripts/train-from-dump.ts and scripts/simulate.ts. */
   dumpHistory(): Promise<DumpedMessage[]>;
+
+  /** jid of WhatsApp's own "Message Yourself" self-chat for the logged-in
+   * account — the recommended default assistant channel, so the owner doesn't
+   * need a second phone number/WhatsApp account just to talk to the assistant. */
+  getSelfJid(): Promise<string | null>;
 }
 
 /**
@@ -53,6 +58,10 @@ export function createWhatsAppAdapter(): WhatsAppAdapter {
     async dumpHistory() {
       console.warn("[mudbot-v2.0] WhatsAppAdapter.dumpHistory() not implemented yet");
       return [];
+    },
+    async getSelfJid() {
+      console.warn("[mudbot-v2.0] WhatsAppAdapter.getSelfJid() not implemented yet");
+      return null;
     },
   };
 }
