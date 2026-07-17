@@ -121,10 +121,12 @@ wiring isn't implemented yet, only stubbed).
 npm run build --workspace extension
 ```
 
-Before building, fill in `extension/src/firebaseClient.ts` with your Firebase web
-app config (Firebase console → Project settings → your apps — register a Web app
-there first if one doesn't exist yet), and point `extension/src/config.ts`'s
-`API_BASE_URL` at your deployed functions.
+Before building, copy `extension/src/firebaseConfig.example.ts` to
+`extension/src/firebaseConfig.ts` (gitignored — keeps your real project's config
+out of the public repo) and fill in your Firebase web app config (Firebase
+console → Project settings → your apps — register a Web app there first if one
+doesn't exist yet). Also point `extension/src/config.ts`'s `API_BASE_URL` at your
+deployed functions.
 
 Then in Chrome: `chrome://extensions` → enable Developer mode → **Load unpacked**
 → select `extension/dist`.

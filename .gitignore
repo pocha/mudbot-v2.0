@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
+extension/src/firebaseConfig.ts
 *.log
 .firebase/
 firebase-debug.log
