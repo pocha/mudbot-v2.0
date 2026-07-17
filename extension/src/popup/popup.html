@@ -3,10 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <style>
-      body { font-family: system-ui, sans-serif; width: 280px; padding: 12px; }
+      body { font-family: system-ui, sans-serif; width: 320px; padding: 12px; }
       section { margin-bottom: 12px; }
       input, button { width: 100%; margin-top: 4px; padding: 6px; box-sizing: border-box; }
       #recaptcha-container { margin-top: 8px; }
+      #chat-list { max-height: 220px; overflow-y: auto; border: 1px solid #ccc; margin-top: 6px; border-radius: 4px; }
+      .chat-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 12px; }
+      .chat-row input { width: auto; margin: 0; }
+      .chat-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chat-row .jid { color: #888; font-size: 10px; }
+      .picker-actions { display: flex; gap: 6px; margin-top: 4px; }
+      .picker-actions button { width: auto; flex: 1; }
     </style>
   </head>
   <body>
@@ -32,8 +39,15 @@
     </section>
 
     <section id="dump-section" style="display: none">
-      <p>Offline testing: export this tab's visible conversation history.</p>
-      <button id="dump-conversation">Dump conversation</button>
+      <p>Offline testing: dump multiple business conversations at once.</p>
+      <input id="chat-limit" type="number" value="50" min="1" placeholder="how many recent chats" />
+      <button id="load-chats">Load recent chats</button>
+      <div id="chat-list"></div>
+      <div class="picker-actions">
+        <button id="select-all-chats">Select all</button>
+        <button id="select-none-chats">Select none</button>
+      </div>
+      <button id="dump-selected">Dump selected</button>
       <p id="dump-status"></p>
     </section>
 

@@ -131,7 +131,7 @@ Then in Chrome: `chrome://extensions` → enable Developer mode → **Load unpac
 
 Open `web.whatsapp.com` in a tab and log in as usual — just the one session, on
 the business number. Sign into the extension popup with phone auth, then use the
-popup's assistant-chat picker: **"Use Message Yourself (recommended)"** to default
+popup's assistant-chat picker: **Use "Message Yourself" (recommended)** to default
 to WhatsApp's own self-chat as the instruction channel, or paste a specific jid
 manually if you'd rather use a different chat.
 
@@ -175,10 +175,18 @@ Builds on the Local Testing setup above (MCP servers + emulator running), but sk
 needing a live WhatsApp session entirely — useful once the DOM adapter is filled
 in, or for testing the server-side logic against a manually-crafted dump:
 
-1. **Dump a conversation**: extension popup → "Dump conversation" → downloads
-   `mudbot-conversation-dump-*.json`.
+1. **Dump conversations**: extension popup → "Load recent chats" (shows the N
+   most recently active chats, configurable, default 50) → deselect anything
+   that isn't a business conversation → "Dump selected" → downloads
+   `mudbot-conversation-dump-*.json`. WhatsApp has no "pick chats to back up"
+   feature, so this picker is how you narrow a scrape down to just the
+   conversations you want. The file holds a `chats` manifest plus one flat,
+   globally-sortable `messages` array spanning all of them.
 2. **Replay it**: `npm run train-from-dump -- <uid> path/to/dump.json` — runs
-   every message through the real `ingestCore` pipeline and prints what happened
+   every message through the real `ingestCore` pipeline **in true chronological
+   order across all dumped chats** (not conversation-by-conversation — pattern
+   learning and memory are per-owner, not per-contact, so that's the order the
+   live system would actually have seen them in) and prints what happened
    (memory stored, pattern matched, decision made) per message.
 3. **Play out new scenarios interactively**: `npm run simulate -- <uid>` — type as
    a customer or as the owner, see the decision made and who any resulting

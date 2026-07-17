@@ -2,6 +2,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } fro
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseClient";
 import { setAssistantJid } from "../config";
+import type { ChatSummary } from "../whatsappAdapter";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -68,24 +69,89 @@ $("set-manual-jid").addEventListener("click", () => {
   saveAssistantJid(jid);
 });
 
-/** Offline-testing export: ask this tab's content script to scrape visible
- * history, then trigger a download. See scripts/train-from-dump.ts and
- * scripts/simulate.ts for what to do with the resulting file. */
-$("dump-conversation").addEventListener("click", async () => {
+/** Offline-testing export: WhatsApp has no "pick chats to back up" feature, so
+ * this is how the owner narrows a scrape down to just business conversations —
+ * load the N most recent chats, deselect anything that isn't one, dump the rest.
+ * See scripts/train-from-dump.ts and scripts/simulate.ts for what to do with
+ * the resulting file. */
+let loadedChats: ChatSummary[] = [];
+
+async function activeWhatsAppTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab.url?.includes("web.whatsapp.com")) {
+  if (!tab?.id || !tab.url?.includes("web.whatsapp.com")) return null;
+  return tab;
+}
+
+function renderChatList(chats: ChatSummary[]) {
+  const container = $("chat-list");
+  container.innerHTML = "";
+  for (const chat of chats) {
+    const row = document.createElement("label");
+    row.className = "chat-row";
+    row.innerHTML = `
+      <input type="checkbox" checked data-jid="${chat.jid}" />
+      <span class="name" title="${chat.displayName}">${chat.displayName}</span>
+      <span class="jid">${chat.jid}</span>
+    `;
+    container.appendChild(row);
+  }
+}
+
+$("load-chats").addEventListener("click", async () => {
+  const tab = await activeWhatsAppTab();
+  if (!tab?.id) {
+    $("dump-status").textContent = "Open web.whatsapp.com in this tab first.";
+    return;
+  }
+  const limit = Number(($("chat-limit") as HTMLInputElement).value) || 50;
+
+  $("dump-status").textContent = "Loading chats...";
+  chrome.tabs.sendMessage(tab.id, { kind: "list_recent_chats", limit }, (response) => {
+    if (!response?.ok) {
+      $("dump-status").textContent = `Error: ${response?.error ?? "no response from page"}`;
+      return;
+    }
+    loadedChats = response.chats;
+    renderChatList(loadedChats);
+    $("dump-status").textContent = `Loaded ${loadedChats.length} chats — deselect anything that isn't a business conversation.`;
+  });
+});
+
+function checkboxes(): HTMLInputElement[] {
+  return Array.from($("chat-list").querySelectorAll('input[type="checkbox"]'));
+}
+
+$("select-all-chats").addEventListener("click", () => checkboxes().forEach((cb) => (cb.checked = true)));
+$("select-none-chats").addEventListener("click", () => checkboxes().forEach((cb) => (cb.checked = false)));
+
+$("dump-selected").addEventListener("click", async () => {
+  const tab = await activeWhatsAppTab();
+  if (!tab?.id) {
     $("dump-status").textContent = "Open web.whatsapp.com in this tab first.";
     return;
   }
 
-  $("dump-status").textContent = "Dumping...";
-  chrome.tabs.sendMessage(tab.id, { kind: "dump_conversation" }, (response) => {
+  const selectedJids = checkboxes()
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.dataset.jid!);
+  if (selectedJids.length === 0) {
+    $("dump-status").textContent = "Select at least one chat first.";
+    return;
+  }
+
+  $("dump-status").textContent = `Dumping ${selectedJids.length} chats (this can take a while)...`;
+  chrome.tabs.sendMessage(tab.id, { kind: "dump_conversations", jids: selectedJids }, (response) => {
     if (!response?.ok) {
       $("dump-status").textContent = `Error: ${response?.error ?? "no response from page"}`;
       return;
     }
 
-    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), messages: response.messages }, null, 2);
+    const messages = response.messages as { jid: string }[];
+    const chats = loadedChats
+      .filter((c) => selectedJids.includes(c.jid))
+      .map((c) => ({ ...c, messageCount: messages.filter((m) => m.jid === c.jid).length }));
+
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), chats, messages }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -94,7 +160,7 @@ $("dump-conversation").addEventListener("click", async () => {
     a.click();
     URL.revokeObjectURL(url);
 
-    $("dump-status").textContent = `Dumped ${response.messages.length} messages.`;
+    $("dump-status").textContent = `Dumped ${messages.length} messages across ${chats.length} chats.`;
   });
 });
 

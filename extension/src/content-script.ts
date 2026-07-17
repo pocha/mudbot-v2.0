@@ -29,11 +29,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // keep the message channel open for the async response
   }
 
-  // Triggered from the popup's "Dump conversation" button — offline-testing
-  // input, see scripts/train-from-dump.ts.
-  if (message.kind === "dump_conversation") {
+  // Triggered when the popup opens its chat picker — offline-testing input.
+  if (message.kind === "list_recent_chats") {
     adapter
-      .dumpHistory()
+      .listRecentChats(message.limit)
+      .then((chats) => sendResponse({ ok: true, chats }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  // Triggered from the popup's "Dump selected" button, with the jids the owner
+  // left checked in the picker — see scripts/train-from-dump.ts.
+  if (message.kind === "dump_conversations") {
+    adapter
+      .dumpHistory(message.jids)
       .then((messages) => sendResponse({ ok: true, messages }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;

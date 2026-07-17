@@ -1,12 +1,16 @@
 #!/usr/bin/env ts-node
 /**
  * Offline testing, step 2: replay a conversation dump (from the extension's
- * "Dump conversation" popup button) through the real ingestCore pipeline —
- * the exact same code the deployed /ingest endpoint runs — and print what
- * happened at each message: memory stored, pattern matched (if any), decision
- * made. This is passive-stream replay only; it won't create new learned
- * patterns (those come from explicit instructions — see simulate.ts) but it
- * will match against patterns simulate.ts has already created for this uid.
+ * popup chat picker, which can span many conversations at once) through the
+ * real ingestCore pipeline — the exact same code the deployed /ingest endpoint
+ * runs — and print what happened at each message: memory stored, pattern
+ * matched (if any), decision made. Replay order is global chronological order
+ * across ALL dumped chats, not conversation-by-conversation, since pattern
+ * learning and memory are per-owner, not per-contact — that's the order the
+ * live system would actually have seen these messages in. This is
+ * passive-stream replay only; it won't create new learned patterns (those come
+ * from explicit instructions — see simulate.ts) but it will match against
+ * patterns simulate.ts has already created for this uid.
  *
  * Needs: MCP_WORKSPACE_URL / MCP_WHATSAPP_URL / MCP_SCHEDULER_URL servers
  * running locally, a Vertex AI-reachable environment (real LLM/embedding
@@ -37,6 +41,12 @@ interface DumpedMessage {
   timestamp: string;
 }
 
+interface DumpedChat {
+  jid: string;
+  displayName: string;
+  messageCount: number;
+}
+
 async function main() {
   const [uid, dumpPath] = process.argv.slice(2);
   if (!uid || !dumpPath) {
@@ -44,10 +54,16 @@ async function main() {
     process.exit(1);
   }
 
-  const { messages } = JSON.parse(readFileSync(dumpPath, "utf8")) as { messages: DumpedMessage[] };
+  const { chats, messages } = JSON.parse(readFileSync(dumpPath, "utf8")) as {
+    chats?: DumpedChat[];
+    messages: DumpedMessage[];
+  };
   const ordered = [...messages].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  console.log(`Replaying ${ordered.length} messages for uid=${uid}...\n`);
+  if (chats) {
+    console.log(`Chats in this dump: ${chats.map((c) => `${c.displayName} (${c.messageCount})`).join(", ")}`);
+  }
+  console.log(`Replaying ${ordered.length} messages across ${chats?.length ?? "an unknown number of"} chats for uid=${uid}, in global chronological order...\n`);
 
   for (const [i, msg] of ordered.entries()) {
     console.log(`--- [${i + 1}/${ordered.length}] ${msg.direction} from ${msg.displayName} (${msg.jid}) ---`);
