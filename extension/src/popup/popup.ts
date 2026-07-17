@@ -1,37 +1,16 @@
-import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseClient";
-import { setAssistantJid } from "../config";
+import { setAssistantJid, HOSTED_LOGIN_URL } from "../config";
 import type { ChatSummary } from "../whatsappAdapter";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
-let confirmationResult: ConfirmationResult | null = null;
-
-const verifier = new RecaptchaVerifier(auth, "recaptcha-container", { size: "normal" });
-
-$("send-code").addEventListener("click", async () => {
-  const phone = ($("phone") as HTMLInputElement).value.trim();
-  try {
-    confirmationResult = await signInWithPhoneNumber(auth, phone, verifier);
-    $("login-form").style.display = "none";
-    $("code-form").style.display = "block";
-  } catch (err) {
-    $("status").textContent = `Error: ${(err as Error).message}`;
-  }
-});
-
-$("confirm-code").addEventListener("click", async () => {
-  const code = ($("code") as HTMLInputElement).value.trim();
-  if (!confirmationResult) return;
-  try {
-    await confirmationResult.confirm(code);
-    $("status").textContent = "Signed in.";
-    $("auth-section").style.display = "none";
-    $("assistant-section").style.display = "block";
-  } catch (err) {
-    $("status").textContent = `Error: ${(err as Error).message}`;
-  }
+/** Phone-auth's reCAPTCHA can't run inside this popup (MV3 blocks remote
+ * scripts in extension pages) — the actual verification happens on the hosted
+ * login page, which hands a signed-in session back to background.ts via
+ * externally_connectable messaging. This button just opens that page. */
+$("open-login").addEventListener("click", () => {
+  chrome.tabs.create({ url: HOSTED_LOGIN_URL });
 });
 
 /** Persists the assistant jid both locally (chrome.storage, read by
@@ -169,5 +148,10 @@ auth.onAuthStateChanged((user) => {
     $("auth-section").style.display = "none";
     $("assistant-section").style.display = "block";
     $("dump-section").style.display = "block";
+  } else {
+    $("auth-section").style.display = "block";
+    $("assistant-section").style.display = "none";
+    $("dump-section").style.display = "none";
+    $("status").textContent = "Not signed in yet — click Login, then come back here.";
   }
 });

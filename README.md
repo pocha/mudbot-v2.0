@@ -16,7 +16,12 @@ confidence works) lives in code comments near the relevant modules — start at
   the assistant channel for instructions/confirmations; everything else observed
   in the session is ordinary business traffic. This deliberately avoids needing a
   second WhatsApp account (and its own device-limit budget) just to talk to the
-  assistant. Firebase Auth (phone) gates who's who.
+  assistant. Firebase Auth (phone) gates who's who — but the actual phone
+  verification step happens on a **hosted login page** (`public/`, deployed to
+  GitHub Pages), not inside the extension itself: Manifest V3 blocks extension
+  pages from loading remote scripts, and Firebase's phone auth depends on
+  loading Google's reCAPTCHA script. The hosted page verifies the phone number,
+  then hands a signed-in session back to the extension (see "Login flow" below).
 - **Server**: Firebase Cloud Functions running Genkit flows (`synthesize` →
   `determineAction`) against Gemini/Vertex AI, with Firestore's native vector
   search as the per-user memory store.
@@ -42,9 +47,47 @@ mcp-workspace-server/   MCP server: Sheets / Calendar (sync tools)
 mcp-whatsapp-server/    MCP server: WhatsApp send (async, extension-bridge)
 mcp-scheduler-server/   MCP server: scheduled reminders (Cloud Scheduler)
 extension/              Chrome extension (Manifest V3): client
+public/                 Hosted login page (GitHub Pages) — see "Login flow" below
 scripts/                Local CLI tools: customer review + offline testing
 firestore.rules / firestore.indexes.json   Per-uid isolation + vector index
 ```
+
+### Login flow
+
+Phone auth's reCAPTCHA can't run inside an MV3 extension page, so the actual
+verification happens on `public/index.html` — a plain static page (no build
+step, Firebase loaded via CDN) deployed to GitHub Pages, a real HTTPS origin
+with none of the extension's remote-script restrictions. The full round trip:
+
+1. Extension popup shows a **Login** button when signed out; it just opens the
+   hosted page in a new tab (`extension/src/config.ts`'s `HOSTED_LOGIN_URL`).
+2. The hosted page (`public/login.js`) runs the phone number + OTP flow via
+   Firebase Auth directly, same as any normal website would.
+3. Once signed in, it calls the `mintExtensionToken` Cloud Function with its
+   Firebase ID token; that function verifies the token and mints a **custom
+   token** for the same uid via the Admin SDK.
+4. The page sends that custom token to the extension via `chrome.runtime.sendMessage`,
+   using Chrome's `externally_connectable` (declared in `manifest.json`, scoped
+   to the GitHub Pages origin) — this only works because the two ends agree on
+   a fixed extension id (see below).
+5. `background.ts` receives it and calls `signInWithCustomToken` — from that
+   point on the extension has its own independent, self-refreshing Firebase
+   session, same as any normal login.
+
+This requires the extension's id to be **stable**, not the randomly-assigned id
+Chrome gives an unpacked extension by default (which can drift). That's what
+`manifest.json`'s `"key"` field pins — it's a public key (safe to commit, not a
+secret), and Chrome derives a deterministic extension id from it. This repo
+already has one generated; regenerate only if you want a different id:
+
+```
+openssl genrsa -out extension/your-key.pem 2048
+openssl rsa -in extension/your-key.pem -pubout -outform DER | openssl base64 -A
+```
+
+Paste that output into `manifest.json`'s `"key"` field, then recompute the
+matching extension id (SHA-256 of the DER public key bytes, first 32 hex chars
+mapped to `a`–`p`) and update `EXTENSION_ID` in `public/login.js` to match.
 
 ## Prerequisites
 
@@ -52,6 +95,9 @@ firestore.rules / firestore.indexes.json   Per-uid isolation + vector index
 - A Firebase project (Blaze plan — Cloud Functions 2nd gen + outbound network
   access to Vertex AI require it) with **Firestore (Native mode)**, **Authentication
   → Phone** provider, and the **Vertex AI API** enabled
+- Your GitHub Pages domain (e.g. `pocha.github.io`) added under **Authentication
+  → Settings → Authorized domains** — needed for the hosted login page (see
+  "Login flow" above)
 - The `firebase` CLI (`npm i -g firebase-tools`), logged in (`firebase login`)
 - Google Cloud auth for local runs of `functions`/`scripts` against real
   Vertex AI/Firestore: `gcloud auth application-default login`
@@ -71,7 +117,7 @@ This is an npm-workspaces monorepo — one install at the root covers every pack
 
 ### 2. Point the repo at your Firebase project
 
-Edit `.firebaserc` and replace `mudbot-v2` with your actual project id.
+Edit `.firebaserc` and replace `watobot-v2` with your actual project id.
 
 ### 3. Configure environment variables
 
@@ -132,15 +178,36 @@ Then in Chrome: `chrome://extensions` → enable Developer mode → **Load unpac
 → select `extension/dist`.
 
 Open `web.whatsapp.com` in a tab and log in as usual — just the one session, on
-the business number. Sign into the extension popup with phone auth, then use the
-popup's assistant-chat picker: **Use "Message Yourself" (recommended)** to default
-to WhatsApp's own self-chat as the instruction channel, or paste a specific jid
-manually if you'd rather use a different chat.
+the business number. In the extension popup, click **Login** (opens the hosted
+login page from part C below — deploy that first), complete phone verification
+there, then come back to the popup: it'll now show the assistant-chat picker —
+**Use "Message Yourself" (recommended)** to default to WhatsApp's own self-chat
+as the instruction channel, or paste a specific jid manually if you'd rather use
+a different chat.
 
 **Known gap**: the actual DOM scraping/sending logic in
 `extension/src/whatsappAdapter.ts` is stubbed out (see "Known gaps" below) —
 everything up to that point (message routing, auth, the command queue) is wired
 and ready for it.
+
+### C. Login page (GitHub Pages)
+
+One-time setup:
+1. In the repo's GitHub settings: **Settings → Pages → Source: GitHub Actions**.
+   `.github/workflows/deploy-pages.yml` then deploys `public/` automatically on
+   every push to `main` that touches that folder (or trigger it manually via
+   the Actions tab).
+2. Confirm `public/login.js`'s `firebaseConfig`, `MINT_TOKEN_URL` (your deployed
+   `mintExtensionToken` function URL), and `EXTENSION_ID` match your actual
+   values — unlike the extension's config, this file **is** committed and public
+   (GitHub Pages has no secret-injection step; whatever's checked in is exactly
+   what's served — see the comment in that file for why that's an acceptable
+   tradeoff for Firebase web config specifically).
+3. Add your Pages domain to Firebase's Authorized domains (see Prerequisites).
+
+Once deployed, the extension's Login button points at this page
+(`HOSTED_LOGIN_URL` in `extension/src/config.ts`) — update that if your Pages
+URL differs from `https://pocha.github.io/watobot-v2/`.
 
 ## Local Testing
 

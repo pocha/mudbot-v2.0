@@ -1,7 +1,9 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { z } from "genkit";
+import cors from "cors";
 
 initializeApp();
 
@@ -46,6 +48,34 @@ export const instruct = onRequest(async (req, res) => {
     console.error("instruct failed", err);
     res.status(500).json({ error: "internal error" });
   }
+});
+
+// Firebase phone-auth's reCAPTCHA can't run inside a Manifest V3 extension page
+// (no remote scripts allowed), so login happens on the hosted GitHub Pages login
+// page instead. That page is a different origin from the extension, so its
+// Firebase Auth session doesn't carry over automatically — this endpoint is the
+// handoff: it verifies the hosted page's ID token and mints a custom token the
+// extension can sign in with directly, giving it its own independent,
+// self-refreshing session from then on. Needs real CORS (unlike /ingest and
+// /instruct, which are only ever called from the extension's own privileged
+// context via host_permissions, not a normal web page).
+const allowedOrigin = cors({ origin: "https://pocha.github.io" });
+
+export const mintExtensionToken = onRequest((req, res) => {
+  allowedOrigin(req, res, async () => {
+    try {
+      const uid = await requireUid(req);
+      const customToken = await getAuth().createCustomToken(uid);
+      res.json({ customToken });
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        res.status(401).json({ error: err.message });
+        return;
+      }
+      console.error("mintExtensionToken failed", err);
+      res.status(500).json({ error: "internal error" });
+    }
+  });
 });
 
 /**

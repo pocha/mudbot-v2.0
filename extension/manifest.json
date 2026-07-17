@@ -3,12 +3,16 @@
   "name": "WätØböt Assistant",
   "version": "0.1.0",
   "description": "WhatsApp assistant: learns from your conversations, drafts and posts on your behalf, and turns orders into sheet rows.",
-  "permissions": ["storage", "tabs"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlQse1pEsR2fEyh0geAtaKWv3V9fEdKvGVbxwkdqkJSg/OwcwDNrDAr2N9ocMHcyKjMP0rplGKBNMpEMzonbnaAUFSX6U4aXDctBF4DLLP8CXbzhzHGOfiOhqW7/v7gkhNyaPupOQETrCOOIgvvkNCJG8RWN7mNyxMDtll0TE6X70BAsFGbMrbb7flSvUMe8K8GJKcMFgeH9/HlzZo6e5MAYPKBE9gTQXaKlfl8NACIBxwoWx3OEOeyAxeDMTSyqlTn2QIIcD+zlaWvara6E7UHekMHT6+ZTPnGCU97xcyw75ZQPJeR0euH6GBo1Vsy0vc4DBVfGC5eNIyYdTntTPtwIDAQAB",
+  "permissions": ["storage", "tabs", "alarms"],
   "host_permissions": [
     "https://web.whatsapp.com/*",
     "https://*.cloudfunctions.net/*",
     "https://*.run.app/*"
   ],
+  "externally_connectable": {
+    "matches": ["https://pocha.github.io/*"]
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

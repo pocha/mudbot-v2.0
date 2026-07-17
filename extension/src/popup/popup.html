@@ -6,7 +6,6 @@
       body { font-family: system-ui, sans-serif; width: 320px; padding: 12px; }
       section { margin-bottom: 12px; }
       input, button { width: 100%; margin-top: 4px; padding: 6px; box-sizing: border-box; }
-      #recaptcha-container { margin-top: 8px; }
       #chat-list { max-height: 220px; overflow-y: auto; border: 1px solid #ccc; margin-top: 6px; border-radius: 4px; }
       .chat-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 12px; }
       .chat-row input { width: auto; margin: 0; }
@@ -18,15 +17,8 @@
   </head>
   <body>
     <section id="auth-section">
-      <div id="login-form">
-        <input id="phone" placeholder="+1 555 000 1111" />
-        <button id="send-code">Send code</button>
-        <div id="recaptcha-container"></div>
-      </div>
-      <div id="code-form" style="display: none">
-        <input id="code" placeholder="Verification code" />
-        <button id="confirm-code">Confirm</button>
-      </div>
+      <p>Sign in to use the assistant.</p>
+      <button id="open-login">Login</button>
       <p id="status"></p>
     </section>
 

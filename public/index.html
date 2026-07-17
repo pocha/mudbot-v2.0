@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mudbot — Sign in</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 360px; margin: 60px auto; padding: 0 16px; }
+      input, button { width: 100%; margin-top: 8px; padding: 10px; box-sizing: border-box; font-size: 14px; }
+      button { cursor: pointer; }
+      #recaptcha-container { margin-top: 8px; }
+      #status { margin-top: 16px; font-size: 14px; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <h2>Sign in to Mudbot</h2>
+    <p>
+      This runs the phone-verification step here, on a real web page, since
+      Chrome's Manifest V3 extensions can't load the reCAPTCHA challenge
+      Firebase's phone auth depends on. Once you're signed in, this page hands
+      your session back to the extension automatically.
+    </p>
+
+    <div id="login-form">
+      <input id="phone" placeholder="+1 555 000 1111" />
+      <button id="send-code">Send code</button>
+      <div id="recaptcha-container"></div>
+    </div>
+
+    <div id="code-form" class="hidden">
+      <input id="code" placeholder="Verification code" />
+      <button id="confirm-code">Confirm</button>
+    </div>
+
+    <p id="status"></p>
+
+    <script type="module" src="./login.js"></script>
+  </body>
+</html>

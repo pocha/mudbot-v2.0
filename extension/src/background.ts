@@ -1,7 +1,25 @@
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { signInWithCustomToken } from "firebase/auth";
 import { auth, db } from "./firebaseClient";
 import { API_BASE_URL, getAssistantJid, getWhatsAppTabId, setWhatsAppTabId } from "./config";
 import type { CommandDoc } from "./commandTypes";
+
+/**
+ * Phone-auth's reCAPTCHA can't run inside an MV3 extension page, so login
+ * happens on the hosted GitHub Pages login page instead (see public/login.js).
+ * That page verifies the phone number, mints a Firebase custom token via the
+ * mintExtensionToken Cloud Function, and sends it here via externally_connectable
+ * messaging. Signing in with it gives the extension its own independent,
+ * self-refreshing Firebase session — same as a normal login from then on.
+ */
+chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+  if (message.type === "auth-success" && message.customToken) {
+    signInWithCustomToken(auth, message.customToken)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true; // keep the message channel open for the async response
+  }
+});
 
 // Manifest V3 service workers are not persistent — Chrome can idle-kill this
 // between events. This alarm is a best-effort keep-alive, not a guarantee; see
