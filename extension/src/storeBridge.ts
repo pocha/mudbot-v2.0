@@ -68,6 +68,11 @@ export async function getChatMessagesViaStore(jid: string, pages: number) {
   return messages;
 }
 
+export async function getRecentMessagesViaStore(jid: string, count: number) {
+  const { messages } = await ask<{ messages: RawMessage[] }>("get_recent_messages", { jid, count });
+  return messages;
+}
+
 export async function startListeningViaStore(): Promise<void> {
   await ask("start_listening");
 }

@@ -1,8 +1,10 @@
 import { createWhatsAppAdapter, type ChatSummary, type DumpedMessage } from "./whatsappAdapter";
+import { getListenActivatedAt, setListeningState } from "./config";
 import {
   onLiveMessage,
   getRecentChatsViaStore,
   getChatMessagesViaStore,
+  getRecentMessagesViaStore,
   startListeningViaStore,
   stopListeningViaStore,
   type RawMessage,
@@ -29,20 +31,28 @@ onLiveMessage((msg) => {
   void storeCapturedMessage(msg);
 });
 
-/** Ground truth (getChatMessagesViaStore, a real history fetch) vs. what
- * Activate Listen actually captured live, for the most recently active
- * `chatCount` chats — answers "is the live listener actually reliable?"
- * empirically instead of trusting Chrome's background-tab policies in theory. */
-async function reconcile(chatCount: number, pages: number) {
-  const chats = await getRecentChatsViaStore(chatCount);
+/** Ground truth (getRecentMessagesViaStore, a real history fetch of the last
+ * `messageCount` messages, filtered to those sent after Activate Listen was
+ * turned on) vs. what Activate Listen actually captured live, for the most
+ * recently active `chatCount` chats — answers "is the live listener actually
+ * reliable?" empirically instead of trusting Chrome's background-tab
+ * policies in theory. */
+async function reconcile(chatCount: number, messageCount: number) {
+  const activatedAt = await getListenActivatedAt();
+  if (activatedAt == null) {
+    throw new Error("Activate Listen at least once before reconciling.");
+  }
   const stored = await chrome.storage.local.get(CAPTURED_KEY);
   const captured: RawMessage[] = stored[CAPTURED_KEY] ?? [];
   const capturedIds = new Set(captured.map((m) => m.id));
 
+  const chats = await getRecentChatsViaStore(chatCount);
   const perChat: { jid: string; displayName: string; groundTruth: number; missed: number }[] = [];
   let totalMissed = 0;
   for (const chat of chats) {
-    const messages = await getChatMessagesViaStore(chat.jid, pages);
+    const messages = (await getRecentMessagesViaStore(chat.jid, messageCount)).filter(
+      (m) => m.t != null && m.t >= activatedAt
+    );
     const missed = messages.filter((m) => !capturedIds.has(m.id)).length;
     perChat.push({ jid: chat.jid, displayName: chat.displayName, groundTruth: messages.length, missed });
     totalMissed += missed;
@@ -146,18 +156,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // "Reconcile" button in the popup.
   if (message.kind === "activate_listen") {
     startListeningViaStore()
+      .then(() => setListeningState(true))
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
   if (message.kind === "deactivate_listen") {
     stopListeningViaStore()
+      .then(() => setListeningState(false))
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
   if (message.kind === "reconcile") {
-    reconcile(message.chatCount ?? 10, message.pages ?? 10)
+    reconcile(message.chatCount ?? 10, message.messageCount ?? 10)
       .then((result) => sendResponse({ ok: true, result }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;

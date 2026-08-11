@@ -86,6 +86,26 @@ async function getChatMessages(jid: string, pages: number): Promise<RawMessage[]
   return msgs.map(serializeMessage);
 }
 
+/** Loads earlier pages only until at least `count` messages are available
+ * (or history runs out), then returns just the most recent `count` — used by
+ * the reliability-test reconcile, which cares about "the last N messages
+ * actually arrived live", not a fixed amount of history. */
+async function getRecentMessages(jid: string, count: number): Promise<RawMessage[]> {
+  const { Chat } = getCollections();
+  const wid = (window as any).require("WAWebWidFactory").createWid(jid);
+  const chat = Chat.get(wid) ?? (await Chat.find(wid));
+  if (!chat) return [];
+
+  let msgs = chat.msgs.getModelsArray().filter((m: any) => !m.isNotification);
+  const loadMessages = (window as any).require("WAWebChatLoadMessages");
+  while (msgs.length < count) {
+    const loaded = await loadMessages.loadEarlierMsgs({ chat });
+    if (!loaded || !loaded.length) break;
+    msgs = [...loaded.filter((m: any) => !m.isNotification), ...msgs];
+  }
+  return msgs.slice(-count).map(serializeMessage);
+}
+
 let listening = false;
 function onMsgAdd(msg: any) {
   if (!msg.isNewMsg) return; // loadEarlierMsgs() also fires 'add' — only forward genuinely new ones
@@ -115,6 +135,11 @@ window.addEventListener("message", (event) => {
     case "get_chat_messages":
       getChatMessages(data.jid, data.pages ?? 10).then((messages) =>
         post({ type: "chat_messages", requestId: data.requestId, jid: data.jid, messages })
+      );
+      break;
+    case "get_recent_messages":
+      getRecentMessages(data.jid, data.count ?? 10).then((messages) =>
+        post({ type: "recent_messages", requestId: data.requestId, jid: data.jid, messages })
       );
       break;
     case "start_listening":
