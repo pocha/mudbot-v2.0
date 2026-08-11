@@ -12,6 +12,7 @@ const buildOptions = {
   entryPoints: {
     background: "src/background.ts",
     "content-script": "src/content-script.ts",
+    inject: "src/inject.ts",
     popup: "src/popup/popup.ts",
   },
   bundle: true,

@@ -28,6 +28,12 @@
 
       * { box-sizing: border-box; }
 
+      html {
+        margin: 0;
+        padding: 0;
+        width: 340px;
+      }
+
       body {
         font-family: "Inter", system-ui, sans-serif;
         width: 340px;
@@ -105,11 +111,12 @@
         border: 1px solid var(--outline-variant);
       }
 
-      #status, #assistant-status, #dump-status {
+      #status, #assistant-status, #load-chats-status, #dump-status, #listen-status, #reconcile-status {
         margin: 8px 0 0;
         font-size: 12px;
         color: var(--on-surface-variant);
         min-height: 14px;
+        white-space: pre-line;
       }
 
       #chat-list {
@@ -135,6 +142,20 @@
 
       .picker-actions { display: flex; gap: 6px; margin-top: 8px; }
       .picker-actions button { width: auto; flex: 1; margin-top: 0; }
+
+      .test-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        padding: 6px 0;
+      }
+      .test-toggle input { width: auto; margin: 0; }
+      .test-ui {
+        margin-top: 8px;
+        padding-top: 10px;
+        border-top: 1px solid var(--outline-variant);
+      }
     </style>
   </head>
   <body>
@@ -142,6 +163,40 @@
       <img src="logo.png" alt="Watobot logo" />
       <span>Watobot</span>
     </div>
+
+    <section id="offline-dump-section">
+      <label class="test-toggle">
+        <input type="checkbox" id="cb-offline-dump" />
+        Offline dump
+      </label>
+      <div id="offline-dump-ui" class="test-ui" style="display: none">
+        <p>Dump multiple business conversations at once.</p>
+        <input id="chat-limit" type="number" value="50" min="1" placeholder="how many recent chats" />
+        <button id="load-chats">Load recent chats</button>
+        <p id="load-chats-status"></p>
+        <div id="chat-list"></div>
+        <div class="picker-actions">
+          <button class="secondary" id="select-all-chats">Select all</button>
+          <button class="secondary" id="select-none-chats">Select none</button>
+        </div>
+        <button id="dump-selected">Dump selected</button>
+        <p id="dump-status"></p>
+      </div>
+    </section>
+
+    <section id="reliability-test-section">
+      <label class="test-toggle">
+        <input type="checkbox" id="cb-reliability-test" />
+        Reliability test
+      </label>
+      <div id="reliability-test-ui" class="test-ui" style="display: none">
+        <p>Capture live messages, then check how many were actually missed.</p>
+        <button id="toggle-listen">Activate Listen</button>
+        <p id="listen-status"></p>
+        <button class="secondary" id="reconcile">Reconcile (last 10 chats, 10 pages each)</button>
+        <p id="reconcile-status"></p>
+      </div>
+    </section>
 
     <section id="auth-section">
       <p>Sign in to use the assistant.</p>
@@ -155,19 +210,6 @@
       <input id="manual-jid" placeholder="or paste a jid manually" />
       <button class="secondary" id="set-manual-jid">Set manually</button>
       <p id="assistant-status"></p>
-    </section>
-
-    <section id="dump-section" style="display: none">
-      <p>Offline testing: dump multiple business conversations at once.</p>
-      <input id="chat-limit" type="number" value="50" min="1" placeholder="how many recent chats" />
-      <button id="load-chats">Load recent chats</button>
-      <div id="chat-list"></div>
-      <div class="picker-actions">
-        <button class="secondary" id="select-all-chats">Select all</button>
-        <button class="secondary" id="select-none-chats">Select none</button>
-      </div>
-      <button id="dump-selected">Dump selected</button>
-      <p id="dump-status"></p>
     </section>
 
     <script src="popup.js"></script>
