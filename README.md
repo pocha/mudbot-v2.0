@@ -95,6 +95,14 @@ mapped to `a`–`p`) and update `EXTENSION_ID` in `public/login.js` to match.
 - A Firebase project (Blaze plan — Cloud Functions 2nd gen + outbound network
   access to Vertex AI require it) with **Firestore (Native mode)**, **Authentication
   → Phone** provider, and the **Vertex AI API** enabled
+- **Firestore's location must be chosen when the database is first created** —
+  this repo targets `asia-south1`, and unlike Functions there's no config file
+  or redeploy that changes it afterward. If Firestore already exists in a
+  different region, your options are: delete and recreate it (fine for a fresh
+  project with no real data yet — `gcloud firestore databases delete
+  --database='(default)'`, then create it again in `asia-south1` via the
+  console or `gcloud firestore databases create --location=asia-south1`), or
+  export/import into a new database if you already have real data to keep.
 - Your GitHub Pages domain (e.g. `pocha.github.io`) added under **Authentication
   → Settings → Authorized domains** — needed for the hosted login page (see
   "Login flow" above)
@@ -150,8 +158,17 @@ firebase deploy --only functions
 ```
 
 The first command is also what provisions the vector index on
-`users/{uid}/memories.embedding` (768 dims, matching `text-embedding-004`),
+`users/{uid}/memories.embedding` (768 dims, matching `text-embedding-005`),
 defined in `firestore.indexes.json`.
+
+Functions deploy to **`asia-south1`**, set once via `setGlobalOptions` in
+`functions/src/index.ts` (co-located with Firestore, also `asia-south1` — see
+Prerequisites). This is independent of two other region settings that don't
+have to match it: `VERTEX_LOCATION` in `functions/.env` (Vertex AI's Gemini
+availability varies by region — check the current model garden before assuming
+`asia-south1` supports it; `us-central1` is always a safe fallback since
+functions can call Vertex AI cross-region, just with a bit more latency) and
+`mcp-scheduler-server`'s `SCHEDULER_LOCATION`.
 
 Deploy each `mcp-*-server` to Cloud Run independently (they're plain
 Express/Node services — `gcloud run deploy` from each package directory after

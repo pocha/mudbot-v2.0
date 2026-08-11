@@ -17,7 +17,7 @@ const firebaseConfig = {
 };
 
 // TODO: point this at your deployed mintExtensionToken Cloud Function.
-const MINT_TOKEN_URL = "https://us-central1-watobot-v2.cloudfunctions.net/mintExtensionToken";
+const MINT_TOKEN_URL = "https://asia-south1-watobot-v2.cloudfunctions.net/mintExtensionToken";
 
 // Fixed by extension/manifest.json's pinned "key" — see README for how this
 // was generated. Must match exactly or externally_connectable messaging fails.

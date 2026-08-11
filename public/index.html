@@ -1,39 +1,73 @@
 <!doctype html>
-<html lang="en">
+<html class="light" lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mudbot — Sign in</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 360px; margin: 60px auto; padding: 0 16px; }
-      input, button { width: 100%; margin-top: 8px; padding: 10px; box-sizing: border-box; font-size: 14px; }
-      button { cursor: pointer; }
-      #recaptcha-container { margin-top: 8px; }
-      #status { margin-top: 16px; font-size: 14px; }
-      .hidden { display: none; }
-    </style>
+    <title>Watobot — Sign in</title>
+    <meta name="description" content="Sign in to your Watobot WhatsApp assistant." />
+
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Plus+Jakarta+Sans:wght@600;700;800&family=Geist&display=swap" rel="stylesheet" />
+    <script src="./assets/theme.js"></script>
+    <link rel="stylesheet" href="./assets/theme.css" />
   </head>
-  <body>
-    <h2>Sign in to Mudbot</h2>
-    <p>
-      This runs the phone-verification step here, on a real web page, since
-      Chrome's Manifest V3 extensions can't load the reCAPTCHA challenge
-      Firebase's phone auth depends on. Once you're signed in, this page hands
-      your session back to the extension automatically.
-    </p>
+  <body class="bg-surface text-on-surface font-body-md min-h-screen flex items-center justify-center px-4 selection:bg-primary-container selection:text-on-primary-container">
+    <main class="w-full max-w-md">
+      <div class="flex items-center justify-center gap-3 mb-8">
+        <img alt="Watobot logo" class="w-10 h-10 rounded-sm" src="./assets/logo.png" />
+        <span class="font-headline-md text-headline-md font-bold text-primary">Watobot</span>
+      </div>
 
-    <div id="login-form">
-      <input id="phone" placeholder="+1 555 000 1111" />
-      <button id="send-code">Send code</button>
-      <div id="recaptcha-container"></div>
-    </div>
+      <div class="bg-surface-container-lowest w-full rounded-xl p-8 whatsapp-shadow border border-outline-variant">
+        <h1 class="font-headline-md text-headline-md text-on-surface mb-2">Sign in</h1>
+        <p class="text-on-surface-variant font-body-md text-sm mb-6">
+          Phone verification happens here rather than inside the extension —
+          Chrome blocks extensions from loading the reCAPTCHA challenge Firebase's
+          phone auth depends on. Once you're signed in, this page hands your
+          session back to the extension automatically.
+        </p>
 
-    <div id="code-form" class="hidden">
-      <input id="code" placeholder="Verification code" />
-      <button id="confirm-code">Confirm</button>
-    </div>
+        <div id="login-form" class="flex flex-col gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="font-label-md text-label-md text-on-surface-variant" for="phone">Phone number</label>
+            <input
+              id="phone"
+              type="tel"
+              class="bg-surface-container-low border-b-2 border-transparent focus:border-primary focus:ring-0 rounded-lg p-3 transition-all outline-none"
+              placeholder="+1 555 000 1111"
+            />
+          </div>
+          <div id="recaptcha-container"></div>
+          <button
+            id="send-code"
+            class="bg-primary-container text-on-primary-container font-bold py-3 rounded-xl hover:opacity-90 active:scale-95 transition-all"
+          >
+            Send code
+          </button>
+        </div>
 
-    <p id="status"></p>
+        <div id="code-form" class="hidden flex flex-col gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="font-label-md text-label-md text-on-surface-variant" for="code">Verification code</label>
+            <input
+              id="code"
+              inputmode="numeric"
+              class="bg-surface-container-low border-b-2 border-transparent focus:border-primary focus:ring-0 rounded-lg p-3 transition-all outline-none"
+              placeholder="123456"
+            />
+          </div>
+          <button
+            id="confirm-code"
+            class="bg-primary-container text-on-primary-container font-bold py-3 rounded-xl hover:opacity-90 active:scale-95 transition-all"
+          >
+            Confirm
+          </button>
+        </div>
+
+        <p id="status" class="text-on-surface-variant font-body-md text-sm mt-4 min-h-[20px]"></p>
+      </div>
+    </main>
 
     <script type="module" src="./login.js"></script>
   </body>

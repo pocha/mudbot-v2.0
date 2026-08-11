@@ -1,5 +1,5 @@
 // TODO: point these at your deployed Cloud Functions / Cloud Run URLs.
-export const API_BASE_URL = "https://us-central1-watobot-v2.cloudfunctions.net";
+export const API_BASE_URL = "https://asia-south1-watobot-v2.cloudfunctions.net";
 
 // The hosted login page (see public/), opened by the popup's Login button when
 // no one's signed in yet — phone-auth's reCAPTCHA can't run inside the

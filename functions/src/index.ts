@@ -2,10 +2,16 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2/options";
 import { z } from "genkit";
 import cors from "cors";
 
 initializeApp();
+
+// Co-located with the Firestore database (also asia-south1, see README) to
+// keep function-to-Firestore calls in-region. Applies to every v2 function
+// exported below unless a function overrides it individually.
+setGlobalOptions({ region: "asia-south1" });
 
 import { requireUid, UnauthorizedError } from "./auth";
 import { ingestCore, instructCore, logEvent } from "./core";
