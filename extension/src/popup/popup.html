@@ -2,20 +2,147 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <!-- Google Fonts via <link> are fine here (style-src/font-src aren't
+         restricted), but note we can NOT use the Tailwind CDN <script> the
+         login page uses — MV3 extension pages enforce script-src 'self' and
+         it can't be relaxed, the same restriction that broke reCAPTCHA in
+         this popup. So this is hand-rolled CSS using the same design tokens
+         (colors/fonts/radius) as public/assets/theme.js, not Tailwind itself. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
     <style>
-      body { font-family: system-ui, sans-serif; width: 320px; padding: 12px; }
-      section { margin-bottom: 12px; }
-      input, button { width: 100%; margin-top: 4px; padding: 6px; box-sizing: border-box; }
-      #chat-list { max-height: 220px; overflow-y: auto; border: 1px solid #ccc; margin-top: 6px; border-radius: 4px; }
-      .chat-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 12px; }
+      :root {
+        --primary: #006d2f;
+        --primary-container: #25d366;
+        --on-primary-container: #005523;
+        --on-primary: #ffffff;
+        --background: #f7f9fc;
+        --surface-container-lowest: #ffffff;
+        --surface-container-low: #f2f4f7;
+        --surface-container: #eceef1;
+        --on-surface: #191c1e;
+        --on-surface-variant: #3c4a3d;
+        --outline-variant: #bbcbb9;
+        --outline: #6c7b6b;
+        --error: #ba1a1a;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        width: 340px;
+        margin: 0;
+        padding: 14px;
+        background: var(--background);
+        color: var(--on-surface);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .brand img { width: 28px; height: 28px; border-radius: 4px; }
+      .brand span {
+        font-family: "Plus Jakarta Sans", sans-serif;
+        font-weight: 800;
+        font-size: 16px;
+        color: var(--primary);
+      }
+
+      section {
+        background: var(--surface-container-lowest);
+        border: 1px solid var(--outline-variant);
+        border-radius: 8px;
+        box-shadow: 0px 4px 12px rgba(11, 20, 26, 0.08);
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+
+      section > p:first-child {
+        margin: 0 0 10px;
+        font-size: 13px;
+        color: var(--on-surface-variant);
+      }
+
+      input {
+        width: 100%;
+        margin-top: 4px;
+        padding: 9px 10px;
+        box-sizing: border-box;
+        font-family: inherit;
+        font-size: 13px;
+        background: var(--surface-container-low);
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 6px;
+        outline: none;
+        color: var(--on-surface);
+      }
+      input:focus { border-bottom-color: var(--primary); }
+
+      button {
+        width: 100%;
+        margin-top: 8px;
+        padding: 9px 10px;
+        box-sizing: border-box;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        border-radius: 8px;
+        background: var(--primary-container);
+        color: var(--on-primary-container);
+        transition: opacity 0.15s, transform 0.05s;
+      }
+      button:hover { opacity: 0.9; }
+      button:active { transform: scale(0.97); }
+      button.secondary {
+        background: transparent;
+        color: var(--on-surface-variant);
+        border: 1px solid var(--outline-variant);
+      }
+
+      #status, #assistant-status, #dump-status {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: var(--on-surface-variant);
+        min-height: 14px;
+      }
+
+      #chat-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid var(--outline-variant);
+        border-radius: 6px;
+        margin-top: 8px;
+        background: var(--surface-container-low);
+      }
+      .chat-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        border-bottom: 1px solid var(--outline-variant);
+      }
+      .chat-row:last-child { border-bottom: none; }
       .chat-row input { width: auto; margin: 0; }
       .chat-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .chat-row .jid { color: #888; font-size: 10px; }
-      .picker-actions { display: flex; gap: 6px; margin-top: 4px; }
-      .picker-actions button { width: auto; flex: 1; }
+      .chat-row .jid { color: var(--outline); font-size: 10px; }
+
+      .picker-actions { display: flex; gap: 6px; margin-top: 8px; }
+      .picker-actions button { width: auto; flex: 1; margin-top: 0; }
     </style>
   </head>
   <body>
+    <div class="brand">
+      <img src="logo.png" alt="Watobot logo" />
+      <span>Watobot</span>
+    </div>
+
     <section id="auth-section">
       <p>Sign in to use the assistant.</p>
       <button id="open-login">Login</button>
@@ -26,7 +153,7 @@
       <p>Which chat should the assistant treat as instructions from you?</p>
       <button id="use-self-chat">Use "Message Yourself" (recommended)</button>
       <input id="manual-jid" placeholder="or paste a jid manually" />
-      <button id="set-manual-jid">Set manually</button>
+      <button class="secondary" id="set-manual-jid">Set manually</button>
       <p id="assistant-status"></p>
     </section>
 
@@ -36,8 +163,8 @@
       <button id="load-chats">Load recent chats</button>
       <div id="chat-list"></div>
       <div class="picker-actions">
-        <button id="select-all-chats">Select all</button>
-        <button id="select-none-chats">Select none</button>
+        <button class="secondary" id="select-all-chats">Select all</button>
+        <button class="secondary" id="select-none-chats">Select none</button>
       </div>
       <button id="dump-selected">Dump selected</button>
       <p id="dump-status"></p>

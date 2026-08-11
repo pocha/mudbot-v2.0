@@ -6,6 +6,7 @@ const watch = process.argv.includes("--watch");
 mkdirSync("dist", { recursive: true });
 copyFileSync("manifest.json", "dist/manifest.json");
 copyFileSync("src/popup/popup.html", "dist/popup.html");
+copyFileSync("src/popup/logo.png", "dist/logo.png");
 
 const buildOptions = {
   entryPoints: {

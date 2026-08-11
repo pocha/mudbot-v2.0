@@ -11,7 +11,7 @@
     "https://*.run.app/*"
   ],
   "externally_connectable": {
-    "matches": ["https://pocha.github.io/*"]
+    "matches": ["https://pocha.fyi/*"]
   },
   "background": {
     "service_worker": "background.js",

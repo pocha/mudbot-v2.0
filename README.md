@@ -103,8 +103,10 @@ mapped to `a`–`p`) and update `EXTENSION_ID` in `public/login.js` to match.
   --database='(default)'`, then create it again in `asia-south1` via the
   console or `gcloud firestore databases create --location=asia-south1`), or
   export/import into a new database if you already have real data to keep.
-- Your GitHub Pages domain (e.g. `pocha.github.io`) added under **Authentication
-  → Settings → Authorized domains** — needed for the hosted login page (see
+- Your login page's actual serving domain (`pocha.fyi` — a custom domain mapped
+  to GitHub Pages via CNAME, not the default `<username>.github.io`) added
+  under **Authentication → Settings → Authorized domains** — needed for the
+  hosted login page (see
   "Login flow" above)
 - The `firebase` CLI (`npm i -g firebase-tools`), logged in (`firebase login`)
 - Google Cloud auth for local runs of `functions`/`scripts` against real
@@ -221,10 +223,18 @@ One-time setup:
    what's served — see the comment in that file for why that's an acceptable
    tradeoff for Firebase web config specifically).
 3. Add your Pages domain to Firebase's Authorized domains (see Prerequisites).
+4. If serving from a custom domain (this repo uses `pocha.fyi`, set up via a
+   `CNAME` file in `public/` and DNS pointed at GitHub Pages) rather than the
+   default `<username>.github.io/<repo-name>/`, make sure **Settings → Pages
+   → Enforce HTTPS** is checked once the certificate finishes provisioning.
+   Phone-auth/reCAPTCHA need a secure context — an `http://` origin will not
+   work reliably even once CORS/`externally_connectable` are configured for it.
 
 Once deployed, the extension's Login button points at this page
-(`HOSTED_LOGIN_URL` in `extension/src/config.ts`) — update that if your Pages
-URL differs from `https://pocha.github.io/watobot-v2/`.
+(`HOSTED_LOGIN_URL` in `extension/src/config.ts`, currently `https://pocha.fyi/`)
+— update that, `extension/manifest.json`'s `externally_connectable`, and the
+CORS origin in `functions/src/index.ts`'s `mintExtensionToken` together if this
+domain ever changes — all three have to agree.
 
 ## Local Testing
 
