@@ -69,6 +69,10 @@ export interface CommandDoc {
   // There's a single WhatsApp Web session per business account, so the only
   // thing that varies per command is which chat it targets — the owner's own
   // assistant chat (a notification/confirmation) or a real customer/group jid.
+  // "jid" here is really the chat's display name — WhatsApp Web's DOM doesn't
+  // expose a real jid (confirmed by inspecting it), so the extension uses the
+  // display name as the identity throughout; see the note atop
+  // extension/src/whatsappAdapter.ts for the full reasoning.
   target: { jid: string; displayName: string };
   text: string;
   status: "pending" | "confirmed" | "sent" | "rejected";
@@ -77,6 +81,8 @@ export interface CommandDoc {
   updatedAt?: TimestampLike;
 }
 
+// jid is the chat's display name (see the CommandDoc.target comment above) —
+// synced from the extension's listRecentChats(), not a real WhatsApp id.
 export interface ContactDoc {
   jid: string;
   displayName: string;

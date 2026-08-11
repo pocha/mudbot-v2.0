@@ -10,6 +10,14 @@ export async function requireUid(req: Request): Promise<string> {
   const match = header.match(/^Bearer (.+)$/);
   if (!match) throw new UnauthorizedError("missing bearer token");
 
-  const decoded = await getAuth().verifyIdToken(match[1]);
-  return decoded.uid;
+  try {
+    const decoded = await getAuth().verifyIdToken(match[1]);
+    return decoded.uid;
+  } catch (err) {
+    // Without this, a bad/expired token and a genuine server error both come
+    // back as an opaque 500 to the client — indistinguishable without digging
+    // through function logs. Surfacing the real reason as a 401 makes token
+    // problems self-diagnosing from the browser console alone.
+    throw new UnauthorizedError(`invalid ID token: ${(err as Error).message}`);
+  }
 }

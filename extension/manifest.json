@@ -11,7 +11,7 @@
     "https://*.run.app/*"
   ],
   "externally_connectable": {
-    "matches": ["https://pocha.github.io/*"]
+    "matches": ["https://pocha.fyi/*"]
   },
   "background": {
     "service_worker": "background.js",
@@ -22,6 +22,12 @@
       "matches": ["https://web.whatsapp.com/*"],
       "js": ["content-script.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["inject.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "action": {

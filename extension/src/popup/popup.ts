@@ -1,9 +1,41 @@
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseClient";
-import { setAssistantJid, HOSTED_LOGIN_URL } from "../config";
+import { setAssistantJid, HOSTED_LOGIN_URL, getListeningState } from "../config";
 import type { ChatSummary } from "../whatsappAdapter";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
+
+/** The popup is destroyed and rebuilt from scratch every time it closes
+ * (standard Chrome behavior, not something we can prevent) — so "remembering"
+ * any field means persisting it to chrome.storage.local ourselves and
+ * re-applying it on the next open, same as any other saved setting. Every
+ * plain input in the popup goes through this one object/key rather than each
+ * getting its own chrome.storage entry. */
+const POPUP_FIELDS_KEY = "mudbot_popup_fields";
+
+async function getPopupFields(): Promise<Record<string, unknown>> {
+  const stored = await chrome.storage.local.get(POPUP_FIELDS_KEY);
+  return stored[POPUP_FIELDS_KEY] ?? {};
+}
+
+async function savePopupField(key: string, value: unknown): Promise<void> {
+  const fields = await getPopupFields();
+  fields[key] = value;
+  await chrome.storage.local.set({ [POPUP_FIELDS_KEY]: fields });
+}
+
+/** Persists a text/number input's value as the user types, and restores it
+ * immediately (synchronously returns the restore promise so callers can await
+ * it before wiring anything that depends on the initial value). */
+function persistInput(id: string, fieldKey: string): Promise<void> {
+  const input = $(id) as HTMLInputElement;
+  input.addEventListener("input", () => {
+    void savePopupField(fieldKey, input.value);
+  });
+  return getPopupFields().then((fields) => {
+    if (fields[fieldKey] != null) input.value = String(fields[fieldKey]);
+  });
+}
 
 /** Phone-auth's reCAPTCHA can't run inside this popup (MV3 blocks remote
  * scripts in extension pages) — the actual verification happens on the hosted
@@ -48,6 +80,9 @@ $("set-manual-jid").addEventListener("click", () => {
   saveAssistantJid(jid);
 });
 
+void persistInput("manual-jid", "manualJid");
+void persistInput("chat-limit", "chatLimit");
+
 /** Offline-testing export: WhatsApp has no "pick chats to back up" feature, so
  * this is how the owner narrows a scrape down to just business conversations —
  * load the N most recent chats, deselect anything that isn't one, dump the rest.
@@ -84,15 +119,15 @@ $("load-chats").addEventListener("click", async () => {
   }
   const limit = Number(($("chat-limit") as HTMLInputElement).value) || 50;
 
-  $("dump-status").textContent = "Loading chats...";
+  $("load-chats-status").textContent = "Loading chats...";
   chrome.tabs.sendMessage(tab.id, { kind: "list_recent_chats", limit }, (response) => {
     if (!response?.ok) {
-      $("dump-status").textContent = `Error: ${response?.error ?? "no response from page"}`;
+      $("load-chats-status").textContent = `Error: ${response?.error ?? "could not load data. Make sure web.whatsapp.com is open. If already open, navigate to tab & refresh it."}`;
       return;
     }
     loadedChats = response.chats;
     renderChatList(loadedChats);
-    $("dump-status").textContent = `Loaded ${loadedChats.length} chats — deselect anything that isn't a business conversation.`;
+    $("load-chats-status").textContent = `Loaded ${loadedChats.length} chats — deselect anything that isn't a business conversation.`;
   });
 });
 
@@ -117,11 +152,12 @@ $("dump-selected").addEventListener("click", async () => {
     $("dump-status").textContent = "Select at least one chat first.";
     return;
   }
+  const selectedChats = loadedChats.filter((c) => selectedJids.includes(c.jid));
 
   $("dump-status").textContent = `Dumping ${selectedJids.length} chats (this can take a while)...`;
-  chrome.tabs.sendMessage(tab.id, { kind: "dump_conversations", jids: selectedJids }, (response) => {
+  chrome.tabs.sendMessage(tab.id, { kind: "dump_conversations", chats: selectedChats }, (response) => {
     if (!response?.ok) {
-      $("dump-status").textContent = `Error: ${response?.error ?? "no response from page"}`;
+      $("dump-status").textContent = `Error: ${response?.error ?? "could not load data. Make sure web.whatsapp.com is open. If already open, navigate to tab & refresh it."}`;
       return;
     }
 
@@ -143,15 +179,97 @@ $("dump-selected").addEventListener("click", async () => {
   });
 });
 
+/** Store-based reliability test (see content-script.ts / inject.ts). The real
+ * listening state lives in content-script.ts (set via config.ts's
+ * setListeningState, since that's the process that actually owns the
+ * listener) — restored below rather than tracked fresh per popup open, so
+ * re-clicking "Activate" when already active stays a harmless no-op on the
+ * page side, and "Deactivate" is offered correctly after a reopen too. */
+let isListening = false;
+
+$("toggle-listen").addEventListener("click", async () => {
+  const tab = await activeWhatsAppTab();
+  if (!tab?.id) {
+    $("listen-status").textContent = "Open web.whatsapp.com in this tab first.";
+    return;
+  }
+  const kind = isListening ? "deactivate_listen" : "activate_listen";
+  chrome.tabs.sendMessage(tab.id, { kind }, (response) => {
+    if (!response?.ok) {
+      $("listen-status").textContent = `Error: ${response?.error ?? "could not load data. Make sure web.whatsapp.com is open. If already open, navigate to tab & refresh it."}`;
+      return;
+    }
+    isListening = !isListening;
+    $("toggle-listen").textContent = isListening ? "Deactivate Listen" : "Activate Listen";
+    $("listen-status").textContent = isListening
+      ? "Listening — captured messages are being stored locally."
+      : "Stopped.";
+  });
+});
+
+$("reconcile").addEventListener("click", async () => {
+  const tab = await activeWhatsAppTab();
+  if (!tab?.id) {
+    $("reconcile-status").textContent = "Open web.whatsapp.com in this tab first.";
+    return;
+  }
+  $("reconcile-status").textContent = "Reconciling (this fetches real history, can take a bit)...";
+  chrome.tabs.sendMessage(tab.id, { kind: "reconcile", chatCount: 10, messageCount: 10 }, (response) => {
+    if (!response?.ok) {
+      $("reconcile-status").textContent = `Error: ${response?.error ?? "could not load data. Make sure web.whatsapp.com is open. If already open, navigate to tab & refresh it."}`;
+      return;
+    }
+    const { perChat, totalMissed } = response.result as {
+      perChat: { displayName: string; groundTruth: number; missed: number }[];
+      totalMissed: number;
+    };
+    const lines = perChat.map((c) => `${c.displayName}: ${c.missed}/${c.groundTruth} missed`);
+    $("reconcile-status").textContent = `Total missed: ${totalMissed}\n${lines.join("\n")}`;
+  });
+});
+
+/** Testing tools (offline dump, reliability test) don't call the backend at
+ * all — they're pure WhatsApp-Store reads written to a local file or
+ * chrome.storage.local — so they work whether or not the user is signed in.
+ * Only the assistant jid picker actually needs an authenticated uid. */
+function wireTestToggle(checkboxId: string, uiId: string, fieldKey: string) {
+  const checkbox = $(checkboxId) as HTMLInputElement;
+  const ui = $(uiId);
+  checkbox.addEventListener("change", () => {
+    ui.style.display = checkbox.checked ? "block" : "none";
+    void savePopupField(fieldKey, checkbox.checked);
+  });
+}
+
+wireTestToggle("cb-offline-dump", "offline-dump-ui", "offlineDump");
+wireTestToggle("cb-reliability-test", "reliability-test-ui", "reliabilityTest");
+
+getPopupFields().then((fields) => {
+  if (fields.offlineDump) {
+    ($("cb-offline-dump") as HTMLInputElement).checked = true;
+    $("offline-dump-ui").style.display = "block";
+  }
+  if (fields.reliabilityTest) {
+    ($("cb-reliability-test") as HTMLInputElement).checked = true;
+    $("reliability-test-ui").style.display = "block";
+  }
+});
+
+getListeningState().then((listening) => {
+  isListening = listening;
+  $("toggle-listen").textContent = isListening ? "Deactivate Listen" : "Activate Listen";
+  if (isListening) {
+    $("listen-status").textContent = "Listening — captured messages are being stored locally.";
+  }
+});
+
 auth.onAuthStateChanged((user) => {
   if (user) {
     $("auth-section").style.display = "none";
     $("assistant-section").style.display = "block";
-    $("dump-section").style.display = "block";
   } else {
     $("auth-section").style.display = "block";
     $("assistant-section").style.display = "none";
-    $("dump-section").style.display = "none";
     $("status").textContent = "Not signed in yet — click Login, then come back here.";
   }
 });

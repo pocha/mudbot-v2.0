@@ -65,7 +65,7 @@ export const instruct = onRequest(async (req, res) => {
 // self-refreshing session from then on. Needs real CORS (unlike /ingest and
 // /instruct, which are only ever called from the extension's own privileged
 // context via host_permissions, not a normal web page).
-const allowedOrigin = cors({ origin: "https://pocha.github.io" });
+const allowedOrigin = cors({ origin: "https://pocha.fyi" });
 
 export const mintExtensionToken = onRequest((req, res) => {
   allowedOrigin(req, res, async () => {
