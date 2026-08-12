@@ -46,6 +46,10 @@ async function apiFetch(path: string, body: unknown) {
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.kind === "register_tab" && sender.tab?.id != null) {
     setWhatsAppTabId(sender.tab.id);
+    // Backstop against Chrome's Memory Saver / general tab discarding under
+    // memory pressure — without this, a long-idle background tab can be
+    // killed and silently take the live listener with it.
+    chrome.tabs.update(sender.tab.id, { autoDiscardable: false });
     return;
   }
 

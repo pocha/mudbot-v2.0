@@ -219,12 +219,13 @@ $("reconcile").addEventListener("click", async () => {
       $("reconcile-status").textContent = `Error: ${response?.error ?? "could not load data. Make sure web.whatsapp.com is open. If already open, navigate to tab & refresh it."}`;
       return;
     }
-    const { perChat, totalMissed } = response.result as {
-      perChat: { displayName: string; groundTruth: number; missed: number }[];
+    const { totalMissed, totalGroundTruth, maxLagSeconds } = response.result as {
       totalMissed: number;
+      totalGroundTruth: number;
+      maxLagSeconds: number | null;
     };
-    const lines = perChat.map((c) => `${c.displayName}: ${c.missed}/${c.groundTruth} missed`);
-    $("reconcile-status").textContent = `Total missed: ${totalMissed}\n${lines.join("\n")}`;
+    const lagText = maxLagSeconds != null ? `${maxLagSeconds.toFixed(1)}s` : "n/a";
+    $("reconcile-status").textContent = `Missed: ${totalMissed}/${totalGroundTruth}\nMax capture delay: ${lagText}`;
   });
 });
 

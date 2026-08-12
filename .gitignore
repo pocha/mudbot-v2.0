@@ -14,4 +14,3 @@ ui-debug.log
 .DS_Store
 package-lock.json
 .claude/
-dist.zip

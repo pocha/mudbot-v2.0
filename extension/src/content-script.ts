@@ -19,11 +19,20 @@ const adapter = createWhatsAppAdapter();
 // key, not a real schema — this is a testing tool, not the production path.
 const CAPTURED_KEY = "mudbot_captured_messages";
 
+/** `t` is WhatsApp's own send-time for the message; `capturedAt` is our local
+ * wall-clock time when onMsgAdd actually fired here. They're expected to be
+ * seconds apart for genuinely real-time delivery — a large gap means the
+ * message only showed up after some delay (e.g. only flushed once the tab
+ * regained focus), which `t` alone can't reveal since it never changes. */
+interface CapturedMessage extends RawMessage {
+  capturedAt: number;
+}
+
 async function storeCapturedMessage(message: RawMessage) {
   const stored = await chrome.storage.local.get(CAPTURED_KEY);
-  const list: RawMessage[] = stored[CAPTURED_KEY] ?? [];
+  const list: CapturedMessage[] = stored[CAPTURED_KEY] ?? [];
   if (list.some((m) => m.id === message.id)) return; // dedupe
-  list.push(message);
+  list.push({ ...message, capturedAt: Date.now() / 1000 });
   await chrome.storage.local.set({ [CAPTURED_KEY]: list });
 }
 
@@ -43,21 +52,29 @@ async function reconcile(chatCount: number, messageCount: number) {
     throw new Error("Activate Listen at least once before reconciling.");
   }
   const stored = await chrome.storage.local.get(CAPTURED_KEY);
-  const captured: RawMessage[] = stored[CAPTURED_KEY] ?? [];
-  const capturedIds = new Set(captured.map((m) => m.id));
+  const captured: CapturedMessage[] = stored[CAPTURED_KEY] ?? [];
+  const capturedById = new Map(captured.map((m) => [m.id, m]));
 
   const chats = await getRecentChatsViaStore(chatCount);
-  const perChat: { jid: string; displayName: string; groundTruth: number; missed: number }[] = [];
   let totalMissed = 0;
+  let totalGroundTruth = 0;
+  const lagsSeconds: number[] = [];
   for (const chat of chats) {
     const messages = (await getRecentMessagesViaStore(chat.jid, messageCount)).filter(
       (m) => m.t != null && m.t >= activatedAt
     );
-    const missed = messages.filter((m) => !capturedIds.has(m.id)).length;
-    perChat.push({ jid: chat.jid, displayName: chat.displayName, groundTruth: messages.length, missed });
-    totalMissed += missed;
+    totalGroundTruth += messages.length;
+    for (const m of messages) {
+      const cap = capturedById.get(m.id);
+      if (!cap) {
+        totalMissed++;
+      } else if (m.t != null) {
+        lagsSeconds.push(cap.capturedAt - m.t);
+      }
+    }
   }
-  return { perChat, totalMissed };
+  const maxLagSeconds = lagsSeconds.length ? Math.max(...lagsSeconds) : null;
+  return { totalMissed, totalGroundTruth, maxLagSeconds };
 }
 
 // ---- Store-based chat list / history dump — now the real implementation
