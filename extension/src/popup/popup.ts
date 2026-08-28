@@ -1,6 +1,5 @@
-import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "../firebaseClient";
-import { setAssistantJid, HOSTED_LOGIN_URL, getListeningState } from "../config";
+import { auth } from "../firebaseClient";
+import { HOSTED_LOGIN_URL, getListeningState } from "../config";
 import type { ChatSummary } from "../dumpTypes";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -45,27 +44,6 @@ $("open-login").addEventListener("click", () => {
   chrome.tabs.create({ url: HOSTED_LOGIN_URL });
 });
 
-/** Persists the assistant jid both locally (chrome.storage, read by
- * background.ts to route incoming messages) and server-side (users/{uid}),
- * for whatever eventually reads it to identify the instruction channel. */
-async function saveAssistantJid(jid: string) {
-  const uid = auth.currentUser?.uid;
-  if (!uid) {
-    $("assistant-status").textContent = "Not signed in.";
-    return;
-  }
-  await setAssistantJid(jid);
-  await setDoc(doc(db, `users/${uid}`), { assistantJid: jid }, { merge: true });
-  $("assistant-status").textContent = `Assistant chat set to ${jid}.`;
-}
-
-$("set-manual-jid").addEventListener("click", () => {
-  const jid = ($("manual-jid") as HTMLInputElement).value.trim();
-  if (!jid) return;
-  saveAssistantJid(jid);
-});
-
-void persistInput("manual-jid", "manualJid");
 void persistInput("chat-limit", "chatLimit");
 
 /** Offline-testing export: WhatsApp has no "pick chats to back up" feature, so
@@ -251,10 +229,8 @@ getListeningState().then((listening) => {
 auth.onAuthStateChanged((user) => {
   if (user) {
     $("auth-section").style.display = "none";
-    $("assistant-section").style.display = "block";
   } else {
     $("auth-section").style.display = "block";
-    $("assistant-section").style.display = "none";
     $("status").textContent = "Not signed in yet — click Login, then come back here.";
   }
 });

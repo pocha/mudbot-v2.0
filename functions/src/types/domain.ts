@@ -47,11 +47,3 @@ export interface GroupDoc {
   displayName: string;
   updatedAt: TimestampLike;
 }
-
-export interface UserDoc {
-  phone: string;
-  // The one chat, within the owner's single WhatsApp Web session, that's treated
-  // as talking to the assistant — defaults to WhatsApp's own "Message Yourself"
-  // self-chat, but can be reassigned to any chat from the popup.
-  assistantJid: string;
-}

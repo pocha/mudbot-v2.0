@@ -6,23 +6,6 @@ export const API_BASE_URL = "https://asia-south1-watobot-v2.cloudfunctions.net";
 // extension itself (see README's Known gaps).
 export const HOSTED_LOGIN_URL = "https://pocha.fyi/";
 
-const ASSISTANT_JID_KEY = "assistantJid";
-
-/** The real WhatsApp jid of the dedicated assistant number — a distinct
- * identity the owner messages to give instructions, not a self-chat (a
- * message the owner sends TO this jid is an instruction; a message FROM it
- * is the assistant's own reply and is ignored, see background.ts). Set via
- * the popup's manual jid field. Everything else observed in the session is
- * ordinary business traffic. */
-export async function getAssistantJid(): Promise<string | null> {
-  const stored = await chrome.storage.local.get(ASSISTANT_JID_KEY);
-  return stored[ASSISTANT_JID_KEY] ?? null;
-}
-
-export async function setAssistantJid(jid: string): Promise<void> {
-  await chrome.storage.local.set({ [ASSISTANT_JID_KEY]: jid });
-}
-
 const LISTENING_STATE_KEY = "mudbot_is_listening";
 // Wall-clock time (unix seconds, matching RawMessage.t) Activate Listen was
 // last turned on — reconcile only judges messages from after this point,

@@ -42,11 +42,12 @@ async function buildResolutionNotes(uid: string, rawText: string): Promise<strin
 }
 
 /**
- * Passive stream: every message in the business WhatsApp session (other than the
- * owner's own assistant chat) is stored as memory and classified for actionable
- * shape. Acting on any of this — the capability-synthesis loop that decides
- * whether an existing capability applies or a new one needs to be built — isn't
- * wired up yet; for now this just stores memory and logs the synthesis.
+ * Passive stream: every WhatsApp message in the business session is stored as
+ * memory and classified for actionable shape — WhatsApp has no instruct
+ * channel, every message here is ordinary business traffic (see README).
+ * Acting on any of this — the capability-synthesis loop that decides whether
+ * an existing capability applies or a new one needs to be built — isn't wired
+ * up yet; for now this just stores memory and logs the synthesis.
  */
 export async function ingestCore(uid: string, input: IngestInput) {
   const { rawText, sourceJid, direction } = input;
@@ -57,9 +58,10 @@ export async function ingestCore(uid: string, input: IngestInput) {
 }
 
 /**
- * Explicit instruction (the owner's assistant chat, or extension UI). Entity
- * resolution runs so `resolutionNotes` is ready for whatever picks this up next;
- * capability matching/synthesis and actually acting on it aren't wired up yet.
+ * Explicit instruction — the web chat page's entry point (see README), not
+ * WhatsApp. Entity resolution runs so `resolutionNotes` is ready for whatever
+ * picks this up next; capability matching/synthesis and actually acting on it
+ * aren't wired up yet.
  */
 export async function instructCore(uid: string, input: InstructInput) {
   const { rawText } = input;

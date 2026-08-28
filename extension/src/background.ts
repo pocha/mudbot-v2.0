@@ -1,6 +1,6 @@
 import { signInWithCustomToken } from "firebase/auth";
 import { auth } from "./firebaseClient";
-import { API_BASE_URL, getAssistantJid } from "./config";
+import { API_BASE_URL } from "./config";
 
 /**
  * Phone-auth's reCAPTCHA can't run inside an MV3 extension page, so login
@@ -51,24 +51,13 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
 
   if (message.kind === "whatsapp_message") {
-    (async () => {
-      const assistantJid = await getAssistantJid();
-      const { jid, rawText, fromMe } = message as { jid: string; rawText: string; fromMe: boolean };
-
-      if (assistantJid && jid === assistantJid) {
-        // The assistant chat is a dedicated number, not a self-chat: a
-        // message the owner sent TO it (fromMe) is an instruction. A message
-        // FROM it is the assistant's own reply arriving back — not new input,
-        // so it's dropped here rather than re-ingested/re-instructed.
-        if (fromMe) await apiFetch("/instruct", { rawText });
-        return;
-      }
-
-      // Every other chat in this session is ordinary business traffic —
-      // passively ingested regardless of direction (both the customer's
-      // messages and the owner's own replies matter as memory).
-      await apiFetch("/ingest", { rawText, sourceJid: jid, direction: fromMe ? "outgoing" : "incoming" });
-    })();
+    // WhatsApp is passive-listening only — there's no assistant chat / instruct
+    // concept here anymore (that's moved to the web chat page). Every chat in
+    // this session is ordinary business traffic, ingested regardless of
+    // direction (both the customer's messages and the owner's own replies
+    // matter as memory).
+    const { jid, rawText, fromMe } = message as { jid: string; rawText: string; fromMe: boolean };
+    void apiFetch("/ingest", { rawText, sourceJid: jid, direction: fromMe ? "outgoing" : "incoming" });
   }
 });
 

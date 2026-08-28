@@ -111,7 +111,7 @@
         border: 1px solid var(--outline-variant);
       }
 
-      #status, #assistant-status, #load-chats-status, #dump-status, #listen-status, #reconcile-status {
+      #status, #load-chats-status, #dump-status, #listen-status, #reconcile-status {
         margin: 8px 0 0;
         font-size: 12px;
         color: var(--on-surface-variant);
@@ -202,13 +202,6 @@
       <p>Sign in to use the assistant.</p>
       <button id="open-login">Login</button>
       <p id="status"></p>
-    </section>
-
-    <section id="assistant-section" style="display: none">
-      <p>Paste the assistant number's WhatsApp jid (e.g. 919876543210@s.whatsapp.net) — messages you send to it are treated as instructions.</p>
-      <input id="manual-jid" placeholder="assistant jid" />
-      <button id="set-manual-jid">Set</button>
-      <p id="assistant-status"></p>
     </section>
 
     <script src="popup.js"></script>
