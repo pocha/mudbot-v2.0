@@ -21,10 +21,12 @@ export async function setWhatsAppTabId(tabId: number): Promise<void> {
   await chrome.storage.local.set({ [WHATSAPP_TAB_KEY]: tabId });
 }
 
-/** The one chat, within that session, treated as talking to the assistant —
- * defaults to WhatsApp's own "Message Yourself" self-chat (see the popup's
- * "Use self-chat" button), but can be reassigned to any jid. Everything else
- * observed in the session is ordinary business traffic. */
+/** The real WhatsApp jid of the dedicated assistant number — a distinct
+ * identity the owner messages to give instructions, not a self-chat (a
+ * message the owner sends TO this jid is an instruction; a message FROM it
+ * is the assistant's own reply and is ignored, see background.ts). Set via
+ * the popup's manual jid field. Everything else observed in the session is
+ * ordinary business traffic. */
 export async function getAssistantJid(): Promise<string | null> {
   const stored = await chrome.storage.local.get(ASSISTANT_JID_KEY);
   return stored[ASSISTANT_JID_KEY] ?? null;

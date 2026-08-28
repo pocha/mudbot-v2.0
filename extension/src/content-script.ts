@@ -1,12 +1,10 @@
 import { createWhatsAppAdapter, type ChatSummary, type DumpedMessage } from "./whatsappAdapter";
-import { getListenActivatedAt, setListeningState } from "./config";
+import { getListenActivatedAt, getListeningState, setListeningState } from "./config";
 import {
   onLiveMessage,
   getRecentChatsViaStore,
   getChatMessagesViaStore,
   getRecentMessagesViaStore,
-  startListeningViaStore,
-  stopListeningViaStore,
   type RawMessage,
 } from "./storeBridge";
 
@@ -17,7 +15,16 @@ const adapter = createWhatsAppAdapter();
 // the page's MAIN world, has no access to chrome.* APIs at all — this is the
 // only place that can persist them). Deliberately a flat array behind one
 // key, not a real schema — this is a testing tool, not the production path.
+// The underlying WA hook (inject.ts's Msg.on('add', ...)) is always on now
+// (production ingestion needs it always-on too, below), so this local
+// "recording enabled" flag exists purely so the popup's Activate/Deactivate
+// toggle can turn the reliability-test capture on/off without touching the
+// production forwarding subscriber right below it.
 const CAPTURED_KEY = "mudbot_captured_messages";
+let testCaptureEnabled = false;
+void getListeningState().then((listening) => {
+  testCaptureEnabled = listening;
+});
 
 /** `t` is WhatsApp's own send-time for the message; `capturedAt` is our local
  * wall-clock time when onMsgAdd actually fired here. They're expected to be
@@ -37,7 +44,24 @@ async function storeCapturedMessage(message: RawMessage) {
 }
 
 onLiveMessage((msg) => {
-  void storeCapturedMessage(msg);
+  if (testCaptureEnabled) void storeCapturedMessage(msg);
+});
+
+/**
+ * Production routing: every live message, in every chat (not just the one
+ * open on screen — inject.ts's hook is global), forwarded to background.ts
+ * to route to /ingest or /instruct. `fromMe` (a real flag from WhatsApp's
+ * own message model) replaces the old DOM-based direction sniffing — more
+ * reliable, and works uniformly across every chat instead of only the one
+ * with focus.
+ */
+onLiveMessage((msg) => {
+  chrome.runtime.sendMessage({
+    kind: "whatsapp_message",
+    jid: msg.jid,
+    rawText: msg.body,
+    fromMe: msg.fromMe,
+  });
 });
 
 /** Ground truth (getRecentMessagesViaStore, a real history fetch of the last
@@ -109,19 +133,9 @@ function toDumpedMessage(m: RawMessage, chatDisplayName: string): DumpedMessage 
 
 // A single WhatsApp Web session (the business account) is all there is to
 // track — register this tab so background knows where to dispatch queued
-// commands, and forward every observed message for background to route
-// (assistant chat -> instruction, anything else -> passive ingest).
+// commands. Message forwarding for production routing is wired above, via
+// onLiveMessage (Store-based, not DOM observation).
 chrome.runtime.sendMessage({ kind: "register_tab" });
-
-adapter.observe((msg) => {
-  chrome.runtime.sendMessage({
-    kind: "whatsapp_message",
-    jid: msg.jid,
-    displayName: msg.displayName,
-    rawText: msg.text,
-    direction: msg.direction,
-  });
-});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Background dispatches queued commands here once it's decided (per pattern
@@ -160,27 +174,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  // Triggered from the popup's "Use self-chat as assistant" button.
-  if (message.kind === "get_self_jid") {
-    adapter
-      .getSelfJid()
-      .then((jid) => sendResponse({ ok: true, jid }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
-    return true;
-  }
-
   // Store-based reliability test (see above): "Activate Listen" toggle and
-  // "Reconcile" button in the popup.
+  // "Reconcile" button in the popup. The underlying WA hook is always on
+  // (production needs it); these just gate the local recording used for
+  // reconcile's ground-truth comparison.
   if (message.kind === "activate_listen") {
-    startListeningViaStore()
-      .then(() => setListeningState(true))
+    testCaptureEnabled = true;
+    setListeningState(true)
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
   if (message.kind === "deactivate_listen") {
-    stopListeningViaStore()
-      .then(() => setListeningState(false))
+    testCaptureEnabled = false;
+    setListeningState(false)
+      .then(() => chrome.storage.local.remove(CAPTURED_KEY)) // this is a one-off reliability test, not a real store — don't let stale captures leak into the next run
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;

@@ -23,16 +23,15 @@
  * resolve/entities.ts already asks a clarifying question on an ambiguous name
  * match, so this degrades to "ask the user" rather than silently picking wrong.
  */
-export interface ObservedMessage {
+/** One entry in a conversation dump — same shape ingestCore/train-from-dump.ts
+ * expect, so a dump can be replayed without any reshaping. Built from
+ * Store-based data now (see content-script.ts's toDumpedMessage), not by this
+ * file — kept here since it's still the shared type both sides import. */
+export interface DumpedMessage {
   jid: string;
   displayName: string;
   text: string;
   direction: "incoming" | "outgoing";
-}
-
-/** One entry in a conversation dump — same shape ingestCore/train-from-dump.ts
- * expect, so a dump can be replayed without any reshaping. */
-export interface DumpedMessage extends ObservedMessage {
   timestamp: string; // ISO 8601
 }
 
@@ -44,33 +43,10 @@ export interface ChatSummary {
 }
 
 export interface WhatsAppAdapter {
-  /** Start watching the currently open/visible chat(s) for new messages, calling
-   * onMessage for each one seen for the first time. */
-  observe(onMessage: (msg: ObservedMessage) => void): void;
-
   /** Open (or focus) the chat for a given jid (i.e. display name — see the
    * file-level note above), type `text` into the composer, and send it — used
    * both for real actions and for assistant-chat notifications. */
   sendMessage(jid: string, text: string): Promise<void>;
-
-  /** List the `limit` most recently active chats, for the popup's dump picker —
-   * WhatsApp doesn't expose a "pick chats to back up" feature itself, so this is
-   * how the owner narrows down to just business conversations before dumping. */
-  listRecentChats(limit: number): Promise<ChatSummary[]>;
-
-  /** Scrape full available history for each of the given chats (by jid) and
-   * return one merged, per-message-tagged array — training/offline-testing
-   * input, see scripts/train-from-dump.ts and scripts/simulate.ts. Since this
-   * has to open/focus each chat in turn to scrape it (WhatsApp Web lazy-loads
-   * history as you scroll up), expect this to take real wall-clock time for
-   * more than a handful of chats. */
-  dumpHistory(jids: string[]): Promise<DumpedMessage[]>;
-
-  /** Identity of WhatsApp's own "Message Yourself" self-chat for the logged-in
-   * account (its display name, per the file-level note above) — the recommended
-   * default assistant channel, so the owner doesn't need a second phone
-   * number/WhatsApp account just to talk to the assistant. */
-  getSelfJid(): Promise<string | null>;
 }
 
 // ---- Chat list (confirmed against a live DOM dump) ----
@@ -82,9 +58,11 @@ function queryChatRows(): HTMLElement[] {
 }
 
 /**
- * Pulls a chat-list row's display name (used as its jid, see file-level note)
- * and last-message timestamp text. A (2), (3)... suffix is added on name
- * collision so picker keys stay unique within one listRecentChats() call.
+ * Pulls a chat-list row's display name and last-message timestamp text — used
+ * by openChatByName below to find/click the right row by name (display name
+ * is still what sendMessage's jid parameter means, per the file-level note;
+ * chat listing/dumping itself now goes through Store-based real jids instead,
+ * see content-script.ts).
  */
 function extractChatSummary(row: HTMLElement): { displayName: string; lastMessageAt: string } {
   const nameEl = row.querySelector<HTMLElement>('[data-testid="cell-frame-title"] span[title]');
@@ -207,78 +185,17 @@ async function openChatByName(name: string, maxScrollAttempts = 20): Promise<boo
   return false;
 }
 
-// ---- Message parsing (confirmed against live incoming + outgoing DOM dumps) ----
-
-/** data-pre-plain-text is formatted like "[9:50 am, 9/6/2026] Sender Name: " —
- * confirmed D/M/YYYY (an example showed day 13, ruling out M/D). */
-function parsePrePlainText(raw: string): { author: string; timestamp: string } | null {
-  const match = raw.match(/^\[(\d{1,2}):(\d{2})\s*([ap]m),\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\]\s*(.*?):\s*$/i);
-  if (!match) return null;
-  const [, hh, mm, ap, day, month, year, author] = match;
-  let hour = parseInt(hh, 10) % 12;
-  if (ap.toLowerCase() === "pm") hour += 12;
-  const date = new Date(Number(year), Number(month) - 1, Number(day), hour, Number(mm));
-  return { author, timestamp: date.toISOString() };
-}
-
-/** A message you sent has an (empty, accessibility-only) `aria-label="You:"`
- * span — cleaner and more reliable than trying to infer direction from the
- * obfuscated tail-in/tail-out atomic CSS classes. */
-function isOutgoingRow(row: HTMLElement): boolean {
-  return !!row.querySelector('span[aria-label="You:"]');
-}
-
-function rowToDumpedMessage(row: HTMLElement, chatDisplayName: string): DumpedMessage | null {
-  const text = row.querySelector<HTMLElement>('[data-testid="selectable-text"]')?.textContent?.trim();
-  if (!text) return null; // media-only/system messages: skip for now, not text to ingest
-
-  const outgoing = isOutgoingRow(row);
-  const preplain = row.querySelector<HTMLElement>("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") ?? "";
-  const parsed = parsePrePlainText(preplain);
-
-  return {
-    jid: chatDisplayName,
-    displayName: outgoing ? "You" : parsed?.author ?? chatDisplayName,
-    text,
-    direction: outgoing ? "outgoing" : "incoming",
-    timestamp: parsed?.timestamp ?? new Date().toISOString(),
-  };
-}
-
 // ---- Adapter ----
+// Passive observation (DOM MutationObserver), chat listing, and history
+// dumping used to live here too, but are now handled via inject.ts's
+// Store-based access instead (see content-script.ts) — more reliable (global
+// across all chats, not just the one open on screen) and gives real jids
+// instead of display-name stand-ins. sendMessage has no Store-based
+// replacement yet, so it's the only thing still implemented via DOM
+// automation.
 
 export function createWhatsAppAdapter(): WhatsAppAdapter {
   return {
-    observe(onMessage) {
-      const root = document.querySelector("#main");
-      if (!root) {
-        console.warn("[mudbot-v2.0] WhatsAppAdapter.observe(): #main not found — open a chat first");
-        return;
-      }
-
-      // Observing #main (not the messages container directly) so this survives
-      // switching chats, since WhatsApp Web unmounts/remounts the messages
-      // container itself on every chat switch. Re-scanning all currently
-      // rendered rows on every mutation and deduping via a WeakSet is simpler
-      // and more robust here than trying to precisely track addedNodes across
-      // a virtualized, frequently-replaced subtree.
-      const seen = new WeakSet<Element>();
-      const observer = new MutationObserver(() => {
-        const chatTitle = getOpenChatTitle();
-        if (!chatTitle) return;
-        for (const row of Array.from(document.querySelectorAll<HTMLElement>('div[data-testid^="conv-msg-"]'))) {
-          if (seen.has(row)) continue;
-          seen.add(row);
-          const dumped = rowToDumpedMessage(row, chatTitle);
-          if (dumped) {
-            const { timestamp: _timestamp, ...msg } = dumped;
-            onMessage(msg);
-          }
-        }
-      });
-      observer.observe(root, { childList: true, subtree: true });
-    },
-
     async sendMessage(jid, _text) {
       const opened = await openChatByName(jid);
       if (!opened) {
@@ -289,86 +206,6 @@ export function createWhatsAppAdapter(): WhatsAppAdapter {
       // yet — need one more DOM inspection (compose a message, inspect the
       // input box and send button) to finish this.
       console.warn(`[mudbot-v2.0] WhatsAppAdapter.sendMessage(): opened "${jid}" but composer/send is not implemented yet`);
-    },
-
-    async listRecentChats(limit) {
-      const seen = new Map<string, number>();
-      const chats: ChatSummary[] = [];
-
-      for (const row of queryChatRows().slice(0, limit)) {
-        const { displayName, lastMessageAt } = extractChatSummary(row);
-        if (!displayName) continue;
-
-        const count = (seen.get(displayName) ?? 0) + 1;
-        seen.set(displayName, count);
-        const jid = count === 1 ? displayName : `${displayName} (${count})`;
-        chats.push({ jid, displayName, lastMessageAt });
-      }
-
-      return chats;
-    },
-
-    async dumpHistory(jids) {
-      const results: DumpedMessage[] = [];
-
-      for (const jid of jids) {
-        const opened = await openChatByName(jid);
-        if (!opened) {
-          console.warn(`[mudbot-v2.0] WhatsAppAdapter.dumpHistory(): could not open chat "${jid}", skipping`);
-          continue;
-        }
-
-        // The header can update before the messages container actually mounts
-        // — wait for it explicitly rather than assuming it's there the instant
-        // openChatByName resolves.
-        const containerReady = await waitFor(
-          () => !!document.querySelector('[data-testid="conversation-panel-messages"]'),
-          3000
-        );
-        const container = document.querySelector<HTMLElement>('[data-testid="conversation-panel-messages"]');
-        if (!containerReady || !container) {
-          console.warn(`[mudbot-v2.0] dumpHistory("${jid}"): chat opened but the messages panel never appeared, skipping`);
-          continue;
-        }
-
-        // Scroll up to lazy-load history until: WhatsApp's own "message
-        // history before X" boundary appears, growth stalls, or a sane cap is
-        // hit (100 messages, matching what was discussed as a reasonable
-        // default) — whichever comes first.
-        const MAX_ROUNDS = 40;
-        const MAX_MESSAGES = 100;
-        let lastHeight = -1;
-        let rounds = 0;
-        for (; rounds < MAX_ROUNDS; rounds++) {
-          if (container.textContent?.includes("Use WhatsApp on your phone")) break;
-          if (container.querySelectorAll('div[data-testid^="conv-msg-"]').length >= MAX_MESSAGES) break;
-          if (container.scrollHeight === lastHeight) break; // nothing new loaded last round
-          lastHeight = container.scrollHeight;
-          container.scrollTop = 0;
-          await sleep(400); // let WhatsApp Web lazy-load the next batch
-        }
-
-        const chatTitle = getOpenChatTitle() ?? jid;
-        const rows = Array.from(container.querySelectorAll<HTMLElement>('div[data-testid^="conv-msg-"]'));
-        let extracted = 0;
-        for (const row of rows) {
-          const msg = rowToDumpedMessage(row, chatTitle);
-          if (msg) {
-            results.push(msg);
-            extracted++;
-          }
-        }
-        console.log(
-          `[mudbot-v2.0] dumpHistory("${jid}"): scrolled ${rounds} round(s), found ${rows.length} message row(s), extracted ${extracted} with text`
-        );
-      }
-
-      return results;
-    },
-
-    async getSelfJid() {
-      console.warn("[mudbot-v2.0] WhatsAppAdapter.getSelfJid() not implemented yet");
-      return null;
     },
   };
 }

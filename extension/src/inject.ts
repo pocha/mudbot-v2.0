@@ -9,9 +9,10 @@
  * hook — not the DOM click-simulation this replaces, since that technique
  * doesn't work here (see whatsappAdapter.ts's history for why).
  *
- * Deliberately lean: plain objects, only the fields needed for testing
- * reliability (Activate Listen / Reconcile), not a full port of
- * whatsapp-web.js's Message/Chat class hierarchy.
+ * Deliberately lean: plain objects, only the fields needed for the
+ * production ingest/instruct routing and the reliability test (Activate
+ * Listen / Reconcile), not a full port of whatsapp-web.js's Message/Chat
+ * class hierarchy.
  *
  * Talks to content-script.ts via window.postMessage — MAIN-world scripts have
  * no access to chrome.* APIs at all, so all actual storage happens on the
@@ -106,22 +107,16 @@ async function getRecentMessages(jid: string, count: number): Promise<RawMessage
   return msgs.slice(-count).map(serializeMessage);
 }
 
-let listening = false;
+/** Fires for every new message across every chat, not just the one open on
+ * screen — this is what production ingest/instruct routing (content-script.ts)
+ * relies on, so it's wired unconditionally as soon as WhatsApp Web is ready,
+ * not gated behind the popup's testing-only "Activate Listen" toggle (that
+ * toggle only controls whether content-script.ts additionally *records*
+ * live messages locally for the reliability test — the underlying hook
+ * itself is always on). */
 function onMsgAdd(msg: any) {
   if (!msg.isNewMsg) return; // loadEarlierMsgs() also fires 'add' — only forward genuinely new ones
   post({ type: "live_message", message: serializeMessage(msg) });
-}
-
-function startListening() {
-  if (listening) return;
-  listening = true;
-  getCollections().Msg.on("add", onMsgAdd);
-}
-
-function stopListening() {
-  if (!listening) return;
-  listening = false;
-  getCollections().Msg.off("add", onMsgAdd);
 }
 
 window.addEventListener("message", (event) => {
@@ -142,20 +137,13 @@ window.addEventListener("message", (event) => {
         post({ type: "recent_messages", requestId: data.requestId, jid: data.jid, messages })
       );
       break;
-    case "start_listening":
-      startListening();
-      post({ type: "listening_state", requestId: data.requestId, listening: true });
-      break;
-    case "stop_listening":
-      stopListening();
-      post({ type: "listening_state", requestId: data.requestId, listening: false });
-      break;
   }
 });
 
 // window.require isn't available until WhatsApp Web's own bundle has loaded.
 (function waitForWhatsAppWeb() {
   if ((window as any).require) {
+    getCollections().Msg.on("add", onMsgAdd);
     post({ type: "ready" });
   } else {
     setTimeout(waitForWhatsAppWeb, 500);

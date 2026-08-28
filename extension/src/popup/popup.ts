@@ -59,21 +59,6 @@ async function saveAssistantJid(jid: string) {
   $("assistant-status").textContent = `Assistant chat set to ${jid}.`;
 }
 
-$("use-self-chat").addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !tab.url?.includes("web.whatsapp.com")) {
-    $("assistant-status").textContent = "Open web.whatsapp.com in this tab first.";
-    return;
-  }
-  chrome.tabs.sendMessage(tab.id, { kind: "get_self_jid" }, async (response) => {
-    if (!response?.ok || !response.jid) {
-      $("assistant-status").textContent = `Error: ${response?.error ?? "could not detect self-chat jid"}`;
-      return;
-    }
-    await saveAssistantJid(response.jid);
-  });
-});
-
 $("set-manual-jid").addEventListener("click", () => {
   const jid = ($("manual-jid") as HTMLInputElement).value.trim();
   if (!jid) return;
