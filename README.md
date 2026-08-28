@@ -15,13 +15,19 @@ extension/              Chrome extension (Manifest V3): WhatsApp client
 public/                 Hosted login page (GitHub Pages)
 scripts/                Local CLI: offline testing against a conversation dump
 firestore.rules / firestore.indexes.json   Per-uid isolation + vector index
+database.rules.json     Realtime Database rules — ingestQueue/commands (per-uid), dispatchQueue (orchestrator-only)
 ```
 
 ## Prerequisites
 
 - Node 22, npm 11+
 - A Firebase project (Blaze plan — Cloud Functions 2nd gen require it) with
-  **Firestore (Native mode)** and **Authentication → Phone** provider enabled
+  **Firestore (Native mode)**, **Realtime Database**, and **Authentication →
+  Phone** provider enabled
+- A Linux VM for the capability runtime (Docker containers) — 4 GB RAM is
+  enough for a handful of pilot users given containers start on demand and
+  stop when idle (see "Capability runtime (VM)" below). Needs no inbound
+  ports open; it only ever calls out to Firebase.
 - A **Gemini API key** from [Google AI Studio](https://aistudio.google.com/)
   (Gemini Developer API, not Vertex — this is what has a free tier). Can be
   from any GCP project, doesn't need to be the same one as your Firebase project.
@@ -72,14 +78,15 @@ Server-side and the browser extension deploy separately, on different schedules.
 ### A. Server-side
 
 ```
-firebase deploy --only firestore:rules,firestore:indexes
+firebase deploy --only firestore:rules,firestore:indexes,database
 firebase deploy --only functions
 ```
 
 The first command also provisions the vector index on
 `users/{uid}/memories.embedding` (768 dims, matching `text-embedding-005`),
-defined in `firestore.indexes.json`. Functions deploy to `asia-south1`, set
-via `setGlobalOptions` in `functions/src/index.ts`.
+defined in `firestore.indexes.json`, and deploys `database.rules.json` for
+Realtime Database. Functions deploy to `asia-south1`, set via
+`setGlobalOptions` in `functions/src/index.ts`.
 
 ### B. Browser extension
 
@@ -132,6 +139,55 @@ Paste that output into `manifest.json`'s `"key"` field, recompute the matching
 extension id (SHA-256 of the DER public key bytes, first 32 hex chars mapped
 to `a`–`p`), and update `EXTENSION_ID` in `public/login.js` to match.
 
+### D. Capability runtime (VM)
+
+**Status: infrastructure prerequisites only.** The orchestrator daemon and the
+per-user container image aren't written yet — nothing here starts a working
+capability runtime end-to-end. What follows gets the VM itself ready so
+there's nothing left to do on that side once the orchestrator exists. See the
+[Capability Runtime](https://claude.ai/code/artifact/2d45d984-7f21-4d46-8980-497e7a532cf5)
+writeup for the design this is implementing.
+
+**1. Install Docker** (Ubuntu/Debian shown — adjust for your distro):
+
+```
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # log out/in after this so `docker` works without sudo
+```
+
+Verify with `docker run hello-world`.
+
+**2. Network posture** — no inbound firewall rules are needed. Every
+connection this VM makes is outbound: to Firebase Realtime Database (the
+orchestrator's live queue listener) and to Firebase Cloud Functions (minting
+a per-user scoped token before starting that user's container). If this VM
+sits behind a security group/firewall you control, outbound HTTPS (443) is
+all it needs — don't open anything inbound for this.
+
+**3. A Node runtime for the orchestrator daemon** (once it exists — this repo
+doesn't have it yet):
+
+```
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+**4. The orchestrator's own Firebase credential** — it needs to authenticate
+as the fixed `orchestrator-service` uid that `database.rules.json` grants
+read access to `dispatchQueue` (see that file). How that credential gets onto
+the VM (a minted custom token exchanged for a refreshable session, similar to
+the extension's login flow) isn't decided yet — flagged in the architecture
+writeup's "Still open" list, not something to set up by hand yet.
+
+**Known gaps blocking a working end-to-end setup** (tracked here, not hidden):
+- No orchestrator daemon code (the process that would listen to
+  `dispatchQueue`, mint a token per job, and `docker run`/`docker stop` per-user containers).
+- No container image/Dockerfile for what actually runs inside a per-user container.
+- No `mintContainerToken` Cloud Function yet (the `database.rules.json`/diagram
+  assume it, `functions/src/index.ts` doesn't have it).
+
+Once those exist, this section will grow a "run the orchestrator" step.
+
 ## Local Testing
 
 Runs the same server-side deployment on your machine instead of Firebase.
@@ -140,12 +196,12 @@ Runs the same server-side deployment on your machine instead of Firebase.
 npm run emulators
 ```
 
-Starts the Firestore + Functions emulators (`firebase.json`) so `/ingest` and
-`/instruct` are callable locally, with `functions/lib` rebuilt via the
-`predeploy` hook. If also testing the extension against this, point its
-`API_BASE_URL` (`extension/src/config.ts`) at the emulator's local URL, and set
-`FIRESTORE_EMULATOR_HOST` in any local script's environment to hit the same
-emulated Firestore.
+Starts the Firestore + Realtime Database + Functions emulators (`firebase.json`)
+so `/ingest` and `/instruct` are callable locally, with `functions/lib`
+rebuilt via the `predeploy` hook. If also testing the extension against this,
+point its `API_BASE_URL` (`extension/src/config.ts`) at the emulator's local
+URL, and set `FIRESTORE_EMULATOR_HOST` in any local script's environment to
+hit the same emulated Firestore.
 
 ## Offline Testing (no live WhatsApp session needed)
 
