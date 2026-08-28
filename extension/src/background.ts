@@ -1,8 +1,6 @@
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { signInWithCustomToken } from "firebase/auth";
-import { auth, db } from "./firebaseClient";
-import { API_BASE_URL, getAssistantJid, getWhatsAppTabId, setWhatsAppTabId } from "./config";
-import type { CommandDoc } from "./commandTypes";
+import { auth } from "./firebaseClient";
+import { API_BASE_URL, getAssistantJid } from "./config";
 
 /**
  * Phone-auth's reCAPTCHA can't run inside an MV3 extension page, so login
@@ -45,7 +43,6 @@ async function apiFetch(path: string, body: unknown) {
 
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.kind === "register_tab" && sender.tab?.id != null) {
-    setWhatsAppTabId(sender.tab.id);
     // Backstop against Chrome's Memory Saver / general tab discarding under
     // memory pressure — without this, a long-idle background tab can be
     // killed and silently take the live listener with it.
@@ -75,42 +72,3 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   }
 });
 
-/**
- * Extension-bridge execution: watches this user's pending commands and
- * dispatches each to the one registered WhatsApp tab — there's only one
- * session, so the only thing that varies per command is which chat it targets
- * (the assistant chat vs. a real customer/group jid), not which tab executes it.
- *
- * NOTE (scaffold simplification): this sends immediately on "pending" rather
- * than waiting for a YES/STOP reply in the assistant chat first. Wiring the
- * interactive confirm-via-WhatsApp-reply step is a follow-up once the real DOM
- * adapter exists to parse those replies.
- */
-function watchCommands(uid: string) {
-  const q = query(collection(db, `users/${uid}/commands`), where("status", "==", "pending"));
-  onSnapshot(q, (snap) => {
-    snap.docChanges().forEach(async (change) => {
-      if (change.type !== "added") return;
-      const command = change.doc.data() as CommandDoc;
-      const tabId = await getWhatsAppTabId();
-      if (tabId == null) {
-        console.warn("[mudbot-v2.0] no WhatsApp tab registered yet, command stays pending");
-        return;
-      }
-      chrome.tabs.sendMessage(
-        tabId,
-        { kind: "execute_send", target: command.target, text: command.text },
-        async (response) => {
-          await updateDoc(doc(db, `users/${uid}/commands/${change.doc.id}`), {
-            status: response?.ok ? "sent" : "rejected",
-            updatedAt: new Date(),
-          });
-        }
-      );
-    });
-  });
-}
-
-auth.onAuthStateChanged((user) => {
-  if (user) watchCommands(user.uid);
-});

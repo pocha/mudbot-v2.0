@@ -6,20 +6,7 @@ export const API_BASE_URL = "https://asia-south1-watobot-v2.cloudfunctions.net";
 // extension itself (see README's Known gaps).
 export const HOSTED_LOGIN_URL = "https://pocha.fyi/";
 
-const WHATSAPP_TAB_KEY = "whatsappTabId";
 const ASSISTANT_JID_KEY = "assistantJid";
-
-/** There's a single WhatsApp Web session (one business account) to track, so
- * just one tab id — set by the content script on load, read by background when
- * dispatching a queued command back into the page. */
-export async function getWhatsAppTabId(): Promise<number | null> {
-  const stored = await chrome.storage.local.get(WHATSAPP_TAB_KEY);
-  return stored[WHATSAPP_TAB_KEY] ?? null;
-}
-
-export async function setWhatsAppTabId(tabId: number): Promise<void> {
-  await chrome.storage.local.set({ [WHATSAPP_TAB_KEY]: tabId });
-}
 
 /** The real WhatsApp jid of the dedicated assistant number — a distinct
  * identity the owner messages to give instructions, not a self-chat (a

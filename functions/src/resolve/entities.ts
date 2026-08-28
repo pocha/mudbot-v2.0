@@ -1,5 +1,5 @@
 import { getFirestore } from "firebase-admin/firestore";
-import type { ContactDoc, GroupDoc, ResourceBindingDoc } from "../types/domain";
+import type { ContactDoc, GroupDoc } from "../types/domain";
 
 export interface ResolutionResult<T> {
   match: T | null;
@@ -49,30 +49,4 @@ export function resolveGroup(uid: string, mentionedName: string) {
 
 export function resolveContact(uid: string, mentionedName: string) {
   return resolveByName<ContactDoc>(uid, "contacts", mentionedName);
-}
-
-/** Resource bindings are looked up by exact label, not fuzzy-matched, since they're
- * assigned once by the user disambiguating (e.g. "orders sheet" -> spreadsheetId). */
-export async function resolveResourceBinding(
-  uid: string,
-  label: string
-): Promise<ResourceBindingDoc | null> {
-  const db = getFirestore();
-  const doc = await db.doc(`users/${uid}/resourceBindings/${normalize(label)}`).get();
-  return doc.exists ? (doc.data() as ResourceBindingDoc) : null;
-}
-
-export async function bindResource(
-  uid: string,
-  label: string,
-  resourceId: string,
-  resourceType: string
-): Promise<void> {
-  const db = getFirestore();
-  await db.doc(`users/${uid}/resourceBindings/${normalize(label)}`).set({
-    label: normalize(label),
-    resourceId,
-    resourceType,
-    createdAt: new Date(),
-  } satisfies ResourceBindingDoc);
 }

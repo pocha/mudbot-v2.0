@@ -1,12 +1,12 @@
 # Mudbot v2.0
 
-A WhatsApp assistant for a small business owner (e.g. a bakery run over WhatsApp). It
-passively learns from real conversations and, on top of that, drafts messages, posts
-to groups, and turns customer orders into spreadsheet rows — either when explicitly
-told to, or on its own once a pattern has earned enough trust. This README covers
-setup; architecture rationale (why everything is an MCP tool call, how pattern
-confidence works) lives in code comments near the relevant modules — start at
-`functions/src/core.ts` and `functions/src/policy/patterns.ts`.
+A WhatsApp-based assistant for a small business owner (e.g. a bakery run over
+WhatsApp) that's becoming a general-purpose chatbot with no fixed catalog of
+pre-built actions: when it gets a query it can't already handle, it says so, works
+out what it needs, asks clarifying questions, builds and installs whatever's
+required, and answers — see "Where this is headed" below. This README covers
+setup; architecture rationale lives in code comments near the relevant modules —
+start at `functions/src/core.ts`.
 
 ## Architecture at a glance
 
@@ -22,30 +22,45 @@ confidence works) lives in code comments near the relevant modules — start at
   pages from loading remote scripts, and Firebase's phone auth depends on
   loading Google's reCAPTCHA script. The hosted page verifies the phone number,
   then hands a signed-in session back to the extension (see "Login flow" below).
-- **Server**: Firebase Cloud Functions running Genkit flows (`synthesize` →
-  `determineAction`) against Gemini/Vertex AI, with Firestore's native vector
-  search as the per-user memory store.
-- **Actions**: everything real-world — Sheets/Calendar, WhatsApp sends, scheduled
-  reminders — is an MCP tool call, served by three small MCP servers
-  (`mcp-workspace-server`, `mcp-whatsapp-server`, `mcp-scheduler-server`). These are
-  server-side services (Cloud Run in production) — a Sheets edit happens entirely
-  on the server via the Sheets API, never on anyone's laptop. The one exception is
-  `mcp-whatsapp-server`, which never touches WhatsApp itself either: it queues a
-  Firestore command the extension executes, since only the extension holds the
-  live WhatsApp session.
-- **Learning**: every passive message is classified for actionable shape; the
-  first time a shape is seen nothing happens until the owner explicitly instructs
-  on it once, which creates a learned pattern. Confidence per pattern (gated by a
-  per-tool risk tier) governs whether future occurrences are suggested or
-  auto-acted with just an FYI.
+- **Server**: Firebase Cloud Functions running a Genkit `synthesize` flow against
+  the Gemini Developer API (Google AI Studio, not Vertex — see "LLM provider"
+  below), with Firestore's native vector search as the per-user memory store.
+- **Actions**: being redesigned as a self-evolving capability system rather than
+  a fixed catalog of pre-built tools — see "Where this is headed" below. The old
+  MCP-tool-call layer (`mcp-workspace-server`, `mcp-whatsapp-server`,
+  `mcp-scheduler-server`, the risk-tiered learned-pattern confidence model) has
+  been removed; `ingestCore`/`instructCore` currently just store memory and log
+  the synthesized message, nothing acts on it yet.
+- **Respond-on-behalf-of-user** (sending a real WhatsApp message) isn't special-cased
+  in the codebase at all — it's just another capability the self-evolving system
+  would build for itself like anything else, so the old hardcoded send machinery
+  (`CommandDoc`, `onCommandUpdated`, the extension's command-dispatch queue, the
+  DOM-click `whatsappAdapter.ts`) has been removed rather than kept disabled.
+  Only passive listening/ingestion is currently wired up.
+
+### LLM provider
+
+Uses the **Gemini Developer API** (Google AI Studio — `GEMINI_API_KEY` in
+`functions/.env`), not Vertex AI: Vertex has no meaningful free tier (pay-per-use
+even on a fresh project), while AI Studio does. `GEMINI_API_KEY` defaults to a
+shared "house" key; the plan is to let a user plug in their own key once they
+exhaust the shared free-tier quota (not implemented yet).
+
+### Where this is headed
+
+The new premise: this is a chatbot that can be asked anything, with no
+pre-created tool for most of it. When a query has no matching capability, the
+bot tells the user it needs a moment, works out what's needed (asking the user
+clarifying questions where its plan has gaps), builds and installs whatever it
+needs, and registers the result as a reusable capability before answering.
+Production model: one Docker container/VM per user, with root, so a generated
+capability can install any dependency it needs — isolation between users is a
+goal but not yet a priority to enforce.
 
 ## Repo layout
 
 ```
 functions/              Firebase Cloud Functions: Genkit orchestration (the core)
-mcp-workspace-server/   MCP server: Sheets / Calendar (sync tools)
-mcp-whatsapp-server/    MCP server: WhatsApp send (async, extension-bridge)
-mcp-scheduler-server/   MCP server: scheduled reminders (Cloud Scheduler)
 extension/              Chrome extension (Manifest V3): client
 public/                 Hosted login page (GitHub Pages) — see "Login flow" below
 scripts/                Local CLI tools: customer review + offline testing
@@ -92,9 +107,11 @@ mapped to `a`–`p`) and update `EXTENSION_ID` in `public/login.js` to match.
 ## Prerequisites
 
 - Node 22, npm 11+
-- A Firebase project (Blaze plan — Cloud Functions 2nd gen + outbound network
-  access to Vertex AI require it) with **Firestore (Native mode)**, **Authentication
-  → Phone** provider, and the **Vertex AI API** enabled
+- A Firebase project (Blaze plan — Cloud Functions 2nd gen require it) with
+  **Firestore (Native mode)** and **Authentication → Phone** provider enabled
+- A **Gemini API key** from [Google AI Studio](https://aistudio.google.com/) —
+  used for the free-tier default; can be from any GCP project, doesn't need to be
+  the same one as your Firebase project (see "LLM provider" above)
 - **Firestore's location must be chosen when the database is first created** —
   this repo targets `asia-south1`, and unlike Functions there's no config file
   or redeploy that changes it afterward. If Firestore already exists in a
@@ -110,7 +127,7 @@ mapped to `a`–`p`) and update `EXTENSION_ID` in `public/login.js` to match.
   "Login flow" above)
 - The `firebase` CLI (`npm i -g firebase-tools`), logged in (`firebase login`)
 - Google Cloud auth for local runs of `functions`/`scripts` against real
-  Vertex AI/Firestore: `gcloud auth application-default login`
+  Firestore: `gcloud auth application-default login`
 
 ## Setup
 
@@ -123,7 +140,7 @@ npm install
 ```
 
 This is an npm-workspaces monorepo — one install at the root covers every package
-(`functions`, the three `mcp-*-server`s, `extension`, `scripts`).
+(`functions`, `extension`, `scripts`).
 
 ### 2. Point the repo at your Firebase project
 
@@ -136,15 +153,10 @@ cp functions/.env.example functions/.env
 ```
 
 Fill in:
-- `GEMINI_MODEL_ID` — confirm this against the current Vertex AI model garden;
-  the default in `.env.example` may drift from what's actually available.
-- `MCP_WORKSPACE_URL`, `MCP_WHATSAPP_URL`, `MCP_SCHEDULER_URL` — where those
-  three servers are reachable. Point these at Cloud Run URLs for a real
-  deployment, or `localhost` ports for Local Testing (below).
-
-The `mcp-scheduler-server` additionally needs `GCP_PROJECT`, `SCHEDULER_LOCATION`,
-and `INSTRUCT_FUNCTION_URL` (the `/instruct` endpoint it POSTs back to when a
-reminder fires) — set these in its own environment wherever it runs.
+- `GEMINI_API_KEY` — your Google AI Studio key (see Prerequisites).
+- `GEMINI_MODEL_ID` — confirm this against the current Gemini Developer API
+  model list; the default in `.env.example` may drift from what's actually
+  available.
 
 ## Deployment
 
@@ -165,20 +177,8 @@ defined in `firestore.indexes.json`.
 
 Functions deploy to **`asia-south1`**, set once via `setGlobalOptions` in
 `functions/src/index.ts` (co-located with Firestore, also `asia-south1` — see
-Prerequisites). This is independent of two other region settings that don't
-have to match it: `VERTEX_LOCATION` in `functions/.env` (Vertex AI's Gemini
-availability varies by region — check the current model garden before assuming
-`asia-south1` supports it; `us-central1` is always a safe fallback since
-functions can call Vertex AI cross-region, just with a bit more latency) and
-`mcp-scheduler-server`'s `SCHEDULER_LOCATION`.
-
-Deploy each `mcp-*-server` to Cloud Run independently (they're plain
-Express/Node services — `gcloud run deploy` from each package directory after
-`npm run build`), then update `functions/.env` (or the deployed function's
-environment config) with their Cloud Run URLs. `mcp-workspace-server` also needs a
-connected Google OAuth token per user before `sheet_update`/`calendar_event` will
-work — see the `TODO` in `mcp-workspace-server/src/googleAuth.ts` (Secret Manager
-wiring isn't implemented yet, only stubbed).
+Prerequisites). The Gemini Developer API isn't region-pinned the way Vertex is,
+so there's no matching region setting to keep in sync here.
 
 ### B. Browser extension
 
@@ -204,10 +204,8 @@ there, then come back to the popup: it'll now show the assistant-chat picker —
 as the instruction channel, or paste a specific jid manually if you'd rather use
 a different chat.
 
-**Known gap**: the actual DOM scraping/sending logic in
-`extension/src/whatsappAdapter.ts` is stubbed out (see "Known gaps" below) —
-everything up to that point (message routing, auth, the command queue) is wired
-and ready for it.
+Message routing (ingest/instruct) and auth are wired up and working; sending a
+message back is not implemented at all currently — see "Where this is headed".
 
 ### C. Login page (GitHub Pages)
 
@@ -241,17 +239,6 @@ domain ever changes — all three have to agree.
 Runs the exact same server-side deployment as above, just on your machine instead
 of Cloud Run/Firebase — for developing and testing before you deploy anything real.
 
-### Run the MCP servers locally
-
-```
-npm run build --workspace mcp-workspace-server  && npm run start --workspace mcp-workspace-server
-npm run build --workspace mcp-whatsapp-server    && npm run start --workspace mcp-whatsapp-server
-npm run build --workspace mcp-scheduler-server   && npm run start --workspace mcp-scheduler-server
-```
-
-They default to ports 4001/4002/4003 (override with `PORT`) — matching the
-`localhost` defaults in `functions/.env.example`.
-
 ### Run the Functions emulator
 
 ```
@@ -267,9 +254,9 @@ emulated Firestore.
 
 ## Offline Testing (no live WhatsApp session needed)
 
-Builds on the Local Testing setup above (MCP servers + emulator running), but skips
-needing a live WhatsApp session entirely — useful once the DOM adapter is filled
-in, or for testing the server-side logic against a manually-crafted dump:
+Builds on the Local Testing setup above (emulator running), but skips needing a
+live WhatsApp session entirely — for testing the server-side logic against a
+manually-crafted dump:
 
 1. **Dump conversations**: extension popup → "Load recent chats" (shows the N
    most recently active chats, configurable, default 50) → deselect anything
@@ -278,28 +265,21 @@ in, or for testing the server-side logic against a manually-crafted dump:
    feature, so this picker is how you narrow a scrape down to just the
    conversations you want. The file holds a `chats` manifest plus one flat,
    globally-sortable `messages` array spanning all of them.
-2. **Replay it**: `npm run train-from-dump -- <uid> path/to/dump.json` — runs
+2. **Replay it**: `npm run seed-conversation -- <uid> path/to/dump.json` — runs
    every message through the real `ingestCore` pipeline **in true chronological
-   order across all dumped chats** (not conversation-by-conversation — pattern
-   learning and memory are per-owner, not per-contact, so that's the order the
-   live system would actually have seen them in) and prints what happened
-   (memory stored, pattern matched, decision made) per message.
-3. **Play out new scenarios interactively**: `npm run simulate -- <uid>` — type as
-   a customer or as the owner, see the decision made and who any resulting
-   WhatsApp message would go to (owner vs. customer/group).
-4. **Review a customer end-to-end**: `npm run review-customer -- <uid>` — prints
-   recent events, learned-pattern confidence, and any stuck pending commands.
+   order across all dumped chats** (not conversation-by-conversation — memory is
+   per-owner, not per-contact, so that's the order the live system would
+   actually have seen them in) and prints what happened (memory stored,
+   synthesis produced) per message.
 
-All of the above talk to Firestore directly via the Admin SDK — set
-`FIRESTORE_EMULATOR_HOST=localhost:8080` first if you want them to run against the
-emulator instead of your real project. LLM/embedding calls always hit real
-Vertex AI regardless (that part isn't mocked).
+Talks to Firestore directly via the Admin SDK — set
+`FIRESTORE_EMULATOR_HOST=localhost:8080` first if you want it to run against the
+emulator instead of your real project. LLM/embedding calls always hit the real
+Gemini API regardless (that part isn't mocked).
 
 ## Known gaps (tracked as TODOs in code, not hidden)
 
-- `extension/src/whatsappAdapter.ts` — real WhatsApp Web DOM selectors
-- `mcp-workspace-server/src/googleAuth.ts` — Secret Manager token fetch for
-  per-user Google Workspace OAuth
-- Interactive "reply YES/STOP to confirm" parsing on the assistant chat —
-  `extension/src/background.ts` currently executes queued commands immediately
-  rather than waiting for a chat reply; flagged inline where this needs revisiting
+- The capability-synthesis loop itself (matching, building, executing, and
+  registering capabilities — including eventually a "respond on WhatsApp"
+  capability) isn't implemented yet — see "Where this is headed" above;
+  `ingestCore`/`instructCore` currently only store memory and log synthesis.

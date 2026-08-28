@@ -3,9 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "review-customer": "ts-node --transpile-only src/review-customer.ts",
-    "train-from-dump": "ts-node --transpile-only src/train-from-dump.ts",
-    "simulate": "ts-node --transpile-only src/simulate.ts"
+    "seed-conversation": "ts-node --transpile-only src/seed-conversation.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

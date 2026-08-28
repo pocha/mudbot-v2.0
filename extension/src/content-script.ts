@@ -1,4 +1,4 @@
-import { createWhatsAppAdapter, type ChatSummary, type DumpedMessage } from "./whatsappAdapter";
+import type { ChatSummary, DumpedMessage } from "./dumpTypes";
 import { getListenActivatedAt, getListeningState, setListeningState } from "./config";
 import {
   onLiveMessage,
@@ -7,8 +7,6 @@ import {
   getRecentMessagesViaStore,
   type RawMessage,
 } from "./storeBridge";
-
-const adapter = createWhatsAppAdapter();
 
 // ---- Store-based reliability test: Activate Listen / Reconcile ----
 // Captured messages are kept in chrome.storage.local (inject.ts, running in
@@ -101,11 +99,9 @@ async function reconcile(chatCount: number, messageCount: number) {
   return { totalMissed, totalGroundTruth, maxLagSeconds };
 }
 
-// ---- Store-based chat list / history dump — now the real implementation
-// behind the popup's existing "Load recent chats" / "Dump selected" picker,
-// confirmed working (real jids, real text, correct fromMe) against a live
-// dump. Replaces the old DOM click-simulation path in whatsappAdapter.ts,
-// which never reliably registered clicks — see that file's history. ----
+// ---- Store-based chat list / history dump — behind the popup's "Load recent
+// chats" / "Dump selected" picker, confirmed working (real jids, real text,
+// correct fromMe) against a live dump. ----
 
 const HISTORY_PAGES = 10; // one "page" == one loadEarlierMsgs() call in inject.ts
 
@@ -131,23 +127,11 @@ function toDumpedMessage(m: RawMessage, chatDisplayName: string): DumpedMessage 
   };
 }
 
-// A single WhatsApp Web session (the business account) is all there is to
-// track — register this tab so background knows where to dispatch queued
-// commands. Message forwarding for production routing is wired above, via
-// onLiveMessage (Store-based, not DOM observation).
+// Registers this tab with background.ts so it's protected from Chrome's tab
+// discarding under memory pressure — see background.ts's register_tab handler.
 chrome.runtime.sendMessage({ kind: "register_tab" });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // Background dispatches queued commands here once it's decided (per pattern
-  // stage / confirm policy) that something should actually be sent.
-  if (message.kind === "execute_send") {
-    adapter
-      .sendMessage(message.target.jid, message.text)
-      .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
-    return true; // keep the message channel open for the async response
-  }
-
   // Triggered when the popup opens its chat picker — offline-testing input.
   if (message.kind === "list_recent_chats") {
     getRecentChatsViaStore(message.limit)
@@ -159,7 +143,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Triggered from the popup's "Dump selected" button, with the {jid,
   // displayName} pairs the owner left checked in the picker (the popup
   // already has these from list_recent_chats, above) — see
-  // scripts/train-from-dump.ts.
+  // scripts/seed-conversation.ts.
   if (message.kind === "dump_conversations") {
     (async () => {
       const results: DumpedMessage[] = [];

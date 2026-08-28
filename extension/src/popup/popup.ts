@@ -1,7 +1,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseClient";
 import { setAssistantJid, HOSTED_LOGIN_URL, getListeningState } from "../config";
-import type { ChatSummary } from "../whatsappAdapter";
+import type { ChatSummary } from "../dumpTypes";
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -46,8 +46,8 @@ $("open-login").addEventListener("click", () => {
 });
 
 /** Persists the assistant jid both locally (chrome.storage, read by
- * background.ts to route incoming messages) and server-side (users/{uid},
- * read by dispatch.ts's notifyUser to know where to send suggestions/FYIs). */
+ * background.ts to route incoming messages) and server-side (users/{uid}),
+ * for whatever eventually reads it to identify the instruction channel. */
 async function saveAssistantJid(jid: string) {
   const uid = auth.currentUser?.uid;
   if (!uid) {
@@ -71,8 +71,7 @@ void persistInput("chat-limit", "chatLimit");
 /** Offline-testing export: WhatsApp has no "pick chats to back up" feature, so
  * this is how the owner narrows a scrape down to just business conversations —
  * load the N most recent chats, deselect anything that isn't one, dump the rest.
- * See scripts/train-from-dump.ts and scripts/simulate.ts for what to do with
- * the resulting file. */
+ * See scripts/seed-conversation.ts for what to do with the resulting file. */
 let loadedChats: ChatSummary[] = [];
 
 async function activeWhatsAppTab() {

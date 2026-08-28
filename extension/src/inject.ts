@@ -6,8 +6,7 @@
  * (github.com/pedroslopez/whatsapp-web.js, src/Client.js + src/util/Injected/Utils.js) —
  * specifically its use of `WAWebCollections` (Msg/Chat), `WAWebChatLoadMessages`
  * for history pagination, and the `Msg.on('add', ...)` + `isNewMsg` real-time
- * hook — not the DOM click-simulation this replaces, since that technique
- * doesn't work here (see whatsappAdapter.ts's history for why).
+ * hook — not DOM click-simulation, which doesn't reliably work here.
  *
  * Deliberately lean: plain objects, only the fields needed for the
  * production ingest/instruct routing and the reliability test (Activate
