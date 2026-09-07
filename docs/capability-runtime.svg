@@ -76,9 +76,11 @@
 
   <!-- Extension -> Ingest trigger -->
   <line x1="270" y1="100" x2="328" y2="100" stroke="#8494a1" stroke-width="1.4" marker-end="url(#arrow)"></line>
+  <text x="299" y="90" text-anchor="middle" class="faint mono" font-size="9">ingestQueue</text>
 
   <!-- Web chat -> Ingest trigger -->
   <line x1="270" y1="475" x2="330" y2="110" stroke="#8494a1" stroke-width="1.4" marker-end="url(#arrow)"></line>
+  <text x="305" y="290" text-anchor="middle" class="faint mono" font-size="9">commands</text>
   <text x="150" y="536" text-anchor="middle" class="faint" font-size="9">(extension has no reply channel yet)</text>
 
   <!-- Ingest trigger -> Firestore -->
@@ -87,7 +89,7 @@
 
   <!-- Ingest trigger -> Orchestrator (dispatch) -->
   <line x1="602" y1="105" x2="708" y2="120" stroke="#0e7c86" stroke-width="1.5" marker-end="url(#arrowCloud)"></line>
-  <text x="655" y="98" text-anchor="middle" class="muted mono" font-size="9.5">dispatch job</text>
+  <text x="655" y="98" text-anchor="middle" class="muted mono" font-size="9.5">dispatchQueue</text>
 
   <!-- Orchestrator -> Control endpoint (mint token) -->
   <path d="M710,150 C 670,150 640,400 602,466" fill="none" stroke="#b5590f" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arrowVm)"></path>
@@ -101,9 +103,9 @@
   <path d="M708,205 C 660,205 620,240 602,242" fill="none" stroke="#b5590f" stroke-width="1.6" marker-end="url(#arrowVm)"></path>
   <text x="655" y="193" text-anchor="middle" class="muted mono" font-size="9.5">scoped session</text>
 
-  <!-- container A -> Web chat page (reply) -->
+  <!-- container A -> Web chat page (reply, same "commands" path the query arrived on) -->
   <path d="M710,200 L650,200 L650,405 L300,405 L300,460 L270,460" fill="none" stroke="#b5590f" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arrowVm)"></path>
-  <text x="475" y="398" text-anchor="middle" class="muted mono" font-size="9.5">reply</text>
+  <text x="475" y="398" text-anchor="middle" class="muted mono" font-size="9.5">commands</text>
 
-  <text x="600" y="565" text-anchor="middle" class="faint" font-size="10">Arrows shown direct — every connection is actually carried over a Firebase Realtime Database queue.</text>
+  <text x="600" y="565" text-anchor="middle" class="faint" font-size="10">Arrows shown direct, labeled with the Realtime Database path each is actually carried over.</text>
 </svg>
