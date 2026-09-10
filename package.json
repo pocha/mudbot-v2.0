@@ -12,6 +12,7 @@
   "scripts": {
     "emulators": "firebase emulators:start --only functions,firestore,database",
     "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "seed-conversation": "npm run seed-conversation --workspace scripts --"
   }
 }

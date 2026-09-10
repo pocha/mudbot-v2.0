@@ -3,7 +3,7 @@
 A self-evolving WhatsApp/web chatbot. Full writeup and open questions:
 **[Capability Runtime](https://claude.ai/code/artifact/2d45d984-7f21-4d46-8980-497e7a532cf5)**.
 
-![Capability runtime architecture: WhatsApp and the web chat page push into Realtime Database queues; a Cloud Function trigger writes durable memory and conversation records to Firestore and dispatches capability jobs; a VM orchestrator listens for jobs and starts per-user Docker containers, which read/write Firestore through their own scoped session and write replies back to Realtime Database.](docs/capability-runtime.svg)
+![Capability runtime architecture: WhatsApp and the web chat page push into Realtime Database queues; a Cloud Function trigger writes durable memory and conversation records to Firestore and dispatches capability jobs; a VM orchestrator listens for jobs and starts or reuses per-user Docker containers, which read/write Firestore through their own scoped session and write replies back to Realtime Database.](docs/capability-runtime.svg)
 
 This README is setup/run only.
 
@@ -27,8 +27,9 @@ database.rules.json     Realtime Database rules — ingestQueue/commands (per-ui
   **Firestore (Native mode)**, **Realtime Database**, and **Authentication →
   Phone** provider enabled
 - A Linux VM for the capability runtime (Docker containers) — 4 GB RAM is
-  enough for a handful of pilot users given containers start on demand and
-  stop when idle (see "Capability runtime (VM)" below). Needs no inbound
+  enough for a handful of pilot users given containers start on demand, one
+  per user, and are reused across that user's jobs (see "Capability runtime
+  (VM)" below — note they aren't stopped once started yet). Needs no inbound
   ports open; it only ever calls out to Firebase.
 - A **Gemini API key** from [Google AI Studio](https://aistudio.google.com/)
   (Gemini Developer API, not Vertex — this is what has a free tier). Can be
@@ -153,11 +154,13 @@ orchestrator is deliberately mechanical (no LLM calls) and everything that
 touches a user's data does it through a token scoped to exactly that user,
 never a shared admin credential.
 
-**Status: V1, ephemeral containers.** Containers are `docker run --rm` per
-job, not the persistent, idle-stopped-not-removed containers the writeup
-describes — a real simplification to get something working end-to-end, not
-the final design. Revisit once there's an actual reason to (state that needs
-to survive across a longer build than one `docker run` should live).
+**Containers are created once per user and reused across jobs.** The
+orchestrator checks whether a container for that user is already running
+(`docker ps`); if not, it starts one (`docker run -d`, idle — the image's
+default `CMD` just keeps it alive rather than running a job). Either way, the
+actual job runs via `docker exec ... node lib/index.js` inside that
+container, so a user's second query doesn't pay a fresh container's cold-start
+cost on top of the LLM round trip. See `orchestrator/src/containerManager.ts`.
 
 **1. Install Docker** (Ubuntu/Debian shown — adjust for your distro):
 
@@ -249,6 +252,29 @@ to pick up jobs the moment the Decision Maker dispatches one.
   that's enough vs. when it isn't.
 - `mintContainerToken`'s shared-secret gating is a pilot-stage stand-in for a
   real service-account identity (see its comment in `functions/src/index.ts`).
+- Containers are never stopped once started — no idle-timeout or health-check
+  for one that's running but wedged. Acceptable for now since Docker's own
+  `--memory` limit bounds the damage per container; revisit once idle
+  containers piling up (or a stuck one silently eating every job for that
+  user) is an actual problem rather than a hypothetical one.
+
+## Testing
+
+```
+npm test
+```
+
+Runs each package's (`functions`, `container`, `orchestrator`) [Vitest](https://vitest.dev)
+suite — colocated `*.test.ts` files next to the source they cover, plus a
+segregated `core.guards.test.ts` for edge-case/fallback behavior (e.g. Decision
+Maker's guard against a hallucinated `capabilityId`) kept separate from
+happy-path coverage. Everything external — Docker (`node:child_process`),
+Firestore/RTDB, and Gemini calls — is mocked at the module boundary, so these
+run instantly with no live Firebase project or Docker daemon needed, unlike
+the manual end-to-end steps in Local/Offline Testing below. Deliberately
+happy-path only for now — no emulator-backed Security Rules suite yet (would
+need `@firebase/rules-unit-testing`); revisit once the project's shape settles
+enough to justify that heavier infrastructure.
 
 ## Local Testing
 

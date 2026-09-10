@@ -15,4 +15,12 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
 COPY --from=builder /app/lib ./lib
-ENTRYPOINT ["node", "lib/index.js"]
+
+# The container stays alive idle once started — the orchestrator reuses it
+# across jobs for the same user via `docker exec ... node lib/index.js`
+# rather than paying a fresh `docker run` cold start per job (see
+# orchestrator/src/containerManager.ts). There's no long-running server
+# process here; each `docker exec` is still a one-shot node process exactly
+# like `lib/index.js` always was, just started inside an already-running
+# container instead of a brand-new one.
+CMD ["tail", "-f", "/dev/null"]
