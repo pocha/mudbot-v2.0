@@ -8,4 +8,8 @@ export const firebaseConfig = {
   apiKey: "TODO",
   authDomain: "TODO.firebaseapp.com",
   projectId: "TODO",
+  // Realtime Database's regions are a much smaller set than Firestore's, so
+  // this is very likely NOT the default https://TODO-default-rtdb.firebaseio.com
+  // form — copy the real URL from Firebase console → Realtime Database.
+  databaseURL: "TODO",
 };

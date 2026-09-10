@@ -16,3 +16,5 @@ package-lock.json
 .claude/
 mudbot-conversation-dump*.json
 mudbot-conversation-dump*.zip
+watobot-v2-firebase-adminsdk-fbsvc-39182ebfa3.json
+container/tmp/

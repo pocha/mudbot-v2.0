@@ -1,9 +1,8 @@
 import { defineFirestoreRetriever } from "@genkit-ai/firebase";
 import { getFirestore } from "firebase-admin/firestore";
 import { ai, embedder } from "../genkit";
+import { MEMORY_RETRIEVAL_TOP_K } from "../config";
 import type { MemoryDoc } from "../types/domain";
-
-const TOP_K = 5;
 
 /**
  * Vector-search retriever scoped to one user's memories subcollection.
@@ -27,7 +26,7 @@ export async function retrieveRelevantMemories(uid: string, queryText: string) {
   const docs = await ai.retrieve({
     retriever,
     query: queryText,
-    options: { limit: TOP_K },
+    options: { limit: MEMORY_RETRIEVAL_TOP_K },
   });
   return docs.map((d) => d.text);
 }

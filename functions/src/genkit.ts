@@ -1,5 +1,6 @@
 import { genkit } from "genkit";
 import { googleAI } from "@genkit-ai/google-genai";
+import { EMBEDDING_DIMENSION } from "./config";
 
 // One place tying the orchestrator to Gemini. Uses the Gemini Developer API
 // (Google AI Studio), not Vertex AI — that's what actually has a free tier;
@@ -16,9 +17,12 @@ export const ai = genkit({
 // hardcoded named import to still exist or be current.
 export const synthesisModel = googleAI.model(process.env.GEMINI_MODEL_ID ?? "gemini-3.1-flash-lite");
 
-// text-embedding-004 was retired in favor of text-embedding-005 (both 768-dim,
-// matching firestore.indexes.json's vector index) — confirm against the
-// current model garden if this drifts further.
+// text-embedding-005 (the old default here) is a Vertex AI model name — it
+// 404s against the Gemini Developer API's embedContent endpoint, which only
+// serves gemini-embedding-*. That model's native output is 3072-dim; pinned
+// down via EMBEDDING_DIMENSION (config.ts) to match firestore.indexes.json's
+// vector index. Confirm against the current model garden if this drifts further.
 export const embedder = googleAI.embedder(
-  (process.env.EMBEDDING_MODEL_ID ?? "text-embedding-005") as Parameters<typeof googleAI.embedder>[0]
+  (process.env.EMBEDDING_MODEL_ID ?? "gemini-embedding-001") as Parameters<typeof googleAI.embedder>[0],
+  { outputDimensionality: EMBEDDING_DIMENSION }
 );

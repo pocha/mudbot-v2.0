@@ -10,10 +10,12 @@ This README is setup/run only.
 ## Repo layout
 
 ```
-functions/              Firebase Cloud Functions: Genkit orchestration (the core)
+functions/              Firebase Cloud Functions: Decision Maker + Genkit orchestration
 extension/              Chrome extension (Manifest V3): WhatsApp client
 public/                 Hosted login page (GitHub Pages)
 scripts/                Local CLI: offline testing against a conversation dump
+orchestrator/           VM daemon: mechanical dispatchQueue -> container runner (see part D)
+container/              Docker image: Executor/Creator, run per job by the orchestrator
 firestore.rules / firestore.indexes.json   Per-uid isolation + vector index
 database.rules.json     Realtime Database rules — ingestQueue/commands (per-uid), dispatchQueue (orchestrator-only)
 ```
@@ -83,7 +85,8 @@ firebase deploy --only functions
 ```
 
 The first command also provisions the vector index on
-`users/{uid}/memories.embedding` (768 dims, matching `text-embedding-005`),
+`users/{uid}/memories.embedding` (768 dims — `gemini-embedding-001` truncated
+via `outputDimensionality`, see `functions/src/genkit.ts`),
 defined in `firestore.indexes.json`, and deploys `database.rules.json` for
 Realtime Database. Functions deploy to `asia-south1`, set via
 `setGlobalOptions` in `functions/src/index.ts`.
@@ -141,12 +144,20 @@ to `a`–`p`), and update `EXTENSION_ID` in `public/login.js` to match.
 
 ### D. Capability runtime (VM)
 
-**Status: infrastructure prerequisites only.** The orchestrator daemon and the
-per-user container image aren't written yet — nothing here starts a working
-capability runtime end-to-end. What follows gets the VM itself ready so
-there's nothing left to do on that side once the orchestrator exists. See the
+Two pieces: the **orchestrator** (a small Node daemon that runs directly on
+the VM host) and the **container** image it launches per job (where
+Executor/Creator actually run). See the
 [Capability Runtime](https://claude.ai/code/artifact/2d45d984-7f21-4d46-8980-497e7a532cf5)
-writeup for the design this is implementing.
+writeup for the design this implements — worth reading first, since the
+orchestrator is deliberately mechanical (no LLM calls) and everything that
+touches a user's data does it through a token scoped to exactly that user,
+never a shared admin credential.
+
+**Status: V1, ephemeral containers.** Containers are `docker run --rm` per
+job, not the persistent, idle-stopped-not-removed containers the writeup
+describes — a real simplification to get something working end-to-end, not
+the final design. Revisit once there's an actual reason to (state that needs
+to survive across a longer build than one `docker run` should live).
 
 **1. Install Docker** (Ubuntu/Debian shown — adjust for your distro):
 
@@ -164,29 +175,80 @@ a per-user scoped token before starting that user's container). If this VM
 sits behind a security group/firewall you control, outbound HTTPS (443) is
 all it needs — don't open anything inbound for this.
 
-**3. A Node runtime for the orchestrator daemon** (once it exists — this repo
-doesn't have it yet):
+**3. Install Node 22** (for the orchestrator daemon):
 
 ```
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
-**4. The orchestrator's own Firebase credential** — it needs to authenticate
-as the fixed `orchestrator-service` uid that `database.rules.json` grants
-read access to `dispatchQueue` (see that file). How that credential gets onto
-the VM (a minted custom token exchanged for a refreshable session, similar to
-the extension's login flow) isn't decided yet — flagged in the architecture
-writeup's "Still open" list, not something to set up by hand yet.
+**4. Get the code onto the VM.** Simplest for now: `git clone` this repo (or
+`scp` just the `orchestrator/` and `container/` directories — they don't
+depend on `functions/`, `extension/`, or `scripts/` at runtime).
 
-**Known gaps blocking a working end-to-end setup** (tracked here, not hidden):
-- No orchestrator daemon code (the process that would listen to
-  `dispatchQueue`, mint a token per job, and `docker run`/`docker stop` per-user containers).
-- No container image/Dockerfile for what actually runs inside a per-user container.
-- No `mintContainerToken` Cloud Function yet (the `database.rules.json`/diagram
-  assume it, `functions/src/index.ts` doesn't have it).
+**5. Build the container image:**
 
-Once those exist, this section will grow a "run the orchestrator" step.
+```
+cd container
+npm install
+docker build -t mudbot-container:latest .
+```
+
+**6. Configure and run the orchestrator:**
+
+```
+cd ../orchestrator
+npm install
+npm run build
+cp .env.example .env
+```
+
+Fill in `.env`:
+- `FIREBASE_API_KEY` / `FIREBASE_AUTH_DOMAIN` / `FIREBASE_PROJECT_ID` /
+  `FIREBASE_DATABASE_URL` — same web app config as
+  `extension/src/firebaseConfig.ts` (Firebase console → Project settings →
+  your apps). `FIREBASE_DATABASE_URL` especially: copy the real URL from
+  Firebase console → Realtime Database rather than assuming the default
+  `firebaseio.com` form — Realtime Database's regions are a much smaller set
+  than Firestore's, so this project's instance likely isn't in the same
+  region as everything else (this one is `asia-southeast1`, Firestore/
+  Functions are `asia-south1`).
+- `MINT_TOKEN_URL` — the deployed `mintContainerToken` function's URL
+  (`firebase functions:list` after deploying functions).
+- `ORCHESTRATOR_SHARED_KEY` — must exactly match `functions/.env`'s value of
+  the same name (that's the shared secret `mintContainerToken` checks against
+  the `x-orchestrator-key` header — see that function's comment for why it's
+  a shared secret rather than a real service-account identity for now).
+- `CONTAINER_IMAGE` — `mudbot-container:latest` if you built it with the tag
+  above.
+- `GEMINI_API_KEY` — same key as `functions/.env`; passed through into every
+  container's environment (not baked into the image) so it's one place to
+  rotate.
+
+Then:
+
+```
+npm start
+```
+
+For anything beyond a one-off test, run it under a process supervisor
+(`systemd`, `pm2`) so it restarts on crash/reboot — not set up by this repo.
+The orchestrator holds one long-lived Firebase session (auto-refreshing) and
+a live listener on `dispatchQueue`; nothing else needs to be running for it
+to pick up jobs the moment the Decision Maker dispatches one.
+
+**Known gaps** (tracked here, not hidden):
+- No dependency installation for generated capabilities — `runCode.ts`
+  currently tells the LLM "no imports, no require()" and only exposes the
+  small `ctx.get/set/update/add/list` surface (see
+  `container/src/capabilityContext.ts`). A capability that genuinely needs an
+  npm package or a new external API integration isn't handled by this loop
+  shape yet.
+- Creator's build loop is bounded generate-and-retry (3 attempts), not real
+  multi-step exploration — see the architecture writeup's discussion of when
+  that's enough vs. when it isn't.
+- `mintContainerToken`'s shared-secret gating is a pilot-stage stand-in for a
+  real service-account identity (see its comment in `functions/src/index.ts`).
 
 ## Local Testing
 

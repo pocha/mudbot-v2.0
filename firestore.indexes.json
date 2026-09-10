@@ -1,25 +1,12 @@
 {
   "indexes": [
     {
-      "collectionGroup": "commands",
+      "collectionGroup": "memories",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
+        { "fieldPath": "embedding", "vectorConfig": { "dimension": 768, "flat": {} } }
       ]
     }
   ],
-  "fieldOverrides": [
-    {
-      "collectionGroup": "memories",
-      "fieldPath": "embedding",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" },
-        {
-          "queryScope": "COLLECTION",
-          "vectorConfig": { "dimension": 768, "flat": {} }
-        }
-      ]
-    }
-  ]
+  "fieldOverrides": []
 }

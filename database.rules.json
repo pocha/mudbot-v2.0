@@ -14,7 +14,8 @@
     },
     "dispatchQueue": {
       ".read": "auth != null && auth.uid === 'orchestrator-service'",
-      ".write": false
+      ".write": "auth != null && auth.uid === 'orchestrator-service'",
+      ".indexOn": ["uid"]
     }
   }
 }

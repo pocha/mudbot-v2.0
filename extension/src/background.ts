@@ -1,6 +1,6 @@
 import { signInWithCustomToken } from "firebase/auth";
-import { auth } from "./firebaseClient";
-import { API_BASE_URL } from "./config";
+import { ref, push } from "firebase/database";
+import { auth, rtdb } from "./firebaseClient";
 
 /**
  * Phone-auth's reCAPTCHA can't run inside an MV3 extension page, so login
@@ -28,17 +28,16 @@ chrome.alarms.onAlarm.addListener(() => {
   /* no-op wake */
 });
 
-async function apiFetch(path: string, body: unknown) {
-  const idToken = await auth.currentUser?.getIdToken();
-  if (!idToken) {
+/** Pushes onto ingestQueue/{uid} with the extension's own uid-scoped session —
+ * database.rules.json only allows a uid to write its own subtree, so this can
+ * never land under the wrong user even if `uid` here were wrong. */
+async function pushToIngestQueue(entry: { rawText: string; sourceJid: string; direction: "incoming" | "outgoing" }) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
     console.warn("[mudbot-v2.0] not signed in yet — open the popup to log in");
     return;
   }
-  await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-    body: JSON.stringify(body),
-  });
+  await push(ref(rtdb, `ingestQueue/${uid}`), entry);
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {
@@ -57,7 +56,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     // direction (both the customer's messages and the owner's own replies
     // matter as memory).
     const { jid, rawText, fromMe } = message as { jid: string; rawText: string; fromMe: boolean };
-    void apiFetch("/ingest", { rawText, sourceJid: jid, direction: fromMe ? "outgoing" : "incoming" });
+    void pushToIngestQueue({ rawText, sourceJid: jid, direction: fromMe ? "outgoing" : "incoming" });
   }
 });
 

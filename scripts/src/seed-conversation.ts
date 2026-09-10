@@ -2,8 +2,8 @@
 /**
  * Offline testing: replay a conversation dump (from the extension's popup
  * chat picker, which can span many conversations at once) through the real
- * ingestCore pipeline — the exact same code the deployed /ingest endpoint
- * runs — and print what happened at each message: memory stored, synthesis
+ * ingestCore pipeline — the exact same code the onIngestQueueCreated RTDB
+ * trigger runs — and print what happened at each message: memory stored, synthesis
  * produced. Replay order is global chronological order across ALL dumped
  * chats, not conversation-by-conversation, since memory is per-owner, not
  * per-contact — that's the order the live system would actually have seen

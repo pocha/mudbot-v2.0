@@ -5,7 +5,9 @@
   "workspaces": [
     "functions",
     "extension",
-    "scripts"
+    "scripts",
+    "orchestrator",
+    "container"
   ],
   "scripts": {
     "emulators": "firebase emulators:start --only functions,firestore,database",

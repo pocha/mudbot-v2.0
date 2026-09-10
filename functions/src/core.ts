@@ -1,7 +1,8 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { synthesizeFlow } from "./flows/synthesize";
+import { decideFlow } from "./flows/decide";
 import { storeMemory } from "./memory/firestoreRetriever";
-import { resolveContact, resolveGroup } from "./resolve/entities";
+import { shortlistCapabilities } from "./capabilities/registry";
+import { pushDispatchJob, replyToCommand } from "./rtdb";
 import type { EventDoc } from "./types/domain";
 
 /**
@@ -17,8 +18,9 @@ export interface IngestInput {
   direction?: "incoming" | "outgoing";
 }
 
-export interface InstructInput {
+export interface DecisionMakerInput {
   rawText: string;
+  commandId: string; // the commands/{uid}/{commandId} node this query arrived on
 }
 
 export async function logEvent(uid: string, entry: Omit<EventDoc, "uid" | "createdAt">) {
@@ -27,46 +29,70 @@ export async function logEvent(uid: string, entry: Omit<EventDoc, "uid" | "creat
     .add({ uid, ...entry, createdAt: new Date() } satisfies EventDoc);
 }
 
-/** Best-effort text scan for the entities/resources a decision would need, so the
- * model gets grounded resolution notes instead of guessing at IDs. Scaffold-level:
- * a real implementation would have the LLM name candidates in `synthesis.entities`
- * and resolve each one, rather than resolving the whole raw message twice. */
-async function buildResolutionNotes(uid: string, rawText: string): Promise<string> {
-  const [group, contact] = await Promise.all([resolveGroup(uid, rawText), resolveContact(uid, rawText)]);
-  const notes: string[] = [];
-  if (group.ambiguous) notes.push(`Multiple groups could match; ask which one.`);
-  else if (group.match) notes.push(`Group resolved: ${group.match.displayName} (${group.match.jid}).`);
-  if (contact.ambiguous) notes.push(`Multiple contacts could match; ask which one.`);
-  else if (contact.match) notes.push(`Contact resolved: ${contact.match.displayName} (${contact.match.jid}).`);
-  return notes.join(" ") || "No WhatsApp entities needed resolution.";
-}
-
 /**
  * Passive stream: every WhatsApp message in the business session is stored as
- * memory and classified for actionable shape — WhatsApp has no instruct
- * channel, every message here is ordinary business traffic (see README).
- * Acting on any of this — the capability-synthesis loop that decides whether
- * an existing capability applies or a new one needs to be built — isn't wired
- * up yet; for now this just stores memory and logs the synthesis.
+ * memory. WhatsApp has no instruct channel — every message here is ordinary
+ * business traffic (see README), so there's no decision to make and
+ * deliberately no LLM call on this path: an earlier version ran full
+ * synthesis (classification + entity extraction) on every single inbound
+ * message here, which paid a generation call per message for output nothing
+ * downstream consumed. Just embed-and-store; the embedding is what lets
+ * decideFlow (on the explicit path) retrieve this as context later.
  */
 export async function ingestCore(uid: string, input: IngestInput) {
   const { rawText, sourceJid, direction } = input;
   const memoryId = await storeMemory(uid, { text: rawText, kind: "chat", sourceJid, direction });
-  const synthesis = await synthesizeFlow({ uid, rawText });
-  await logEvent(uid, { trigger: "passive", rawText, synthesis });
   return { status: "stored_only" as const, memoryId };
 }
 
 /**
  * Explicit instruction — the web chat page's entry point (see README), not
- * WhatsApp. Entity resolution runs so `resolutionNotes` is ready for whatever
- * picks this up next; capability matching/synthesis and actually acting on it
- * aren't wired up yet.
+ * WhatsApp. Every query here is answerable-or-buildable, unlike WhatsApp's
+ * passive stream. One LLM call (decideFlow) does everything: retrieves
+ * memory context, judges against a shortlist of this user's existing
+ * capabilities (pre-narrowed by embedding similarity so prompt cost doesn't
+ * scale with registry size), and either asks a clarifying question, extracts
+ * params for a matched capability, or signals a new one is needed. Execute
+ * and build jobs just push job metadata — actually answering happens later,
+ * in the VM's Executor/Creator, which writes back onto the same
+ * commands/{uid}/{commandId} node this query arrived on.
  */
-export async function instructCore(uid: string, input: InstructInput) {
-  const { rawText } = input;
-  const synthesis = await synthesizeFlow({ uid, rawText });
-  const resolutionNotes = await buildResolutionNotes(uid, rawText);
-  await logEvent(uid, { trigger: "explicit", rawText, synthesis });
-  return { status: "stored_only" as const, synthesis, resolutionNotes };
+export async function decisionMakerCore(uid: string, input: DecisionMakerInput) {
+  const { rawText, commandId } = input;
+  const candidates = await shortlistCapabilities(uid, rawText);
+  const decision = await decideFlow({ uid, rawText, candidates });
+
+  if (decision.action === "clarify") {
+    const question = decision.clarifyQuestion ?? "Could you share a bit more detail?";
+    await replyToCommand(uid, commandId, question);
+    await logEvent(uid, { trigger: "explicit", rawText, decision });
+    return { status: "clarify" as const, question };
+  }
+
+  // Guard against a hallucinated capabilityId: only trust "execute" if it
+  // names one of the ids decideFlow was actually shown. Falls back to
+  // "create" rather than failing outright — worst case is an unnecessary
+  // rebuild, not a crash.
+  const matchedCapabilityId =
+    decision.action === "execute" && candidates.some((c) => c.capabilityId === decision.capabilityId)
+      ? decision.capabilityId
+      : undefined;
+
+  if (matchedCapabilityId) {
+    await pushDispatchJob({
+      uid,
+      commandId,
+      type: "execute",
+      capabilityId: matchedCapabilityId,
+      rawText,
+      params: decision.params ?? {},
+      createdAt: Date.now(),
+    });
+    await logEvent(uid, { trigger: "explicit", rawText, decision });
+    return { status: "dispatched" as const, type: "execute" as const, capabilityId: matchedCapabilityId };
+  }
+
+  await pushDispatchJob({ uid, commandId, type: "build", rawText, intent: decision.intent, createdAt: Date.now() });
+  await logEvent(uid, { trigger: "explicit", rawText, decision });
+  return { status: "dispatched" as const, type: "build" as const };
 }
