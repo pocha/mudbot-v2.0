@@ -6,13 +6,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("firebase-admin/firestore", () => ({
   getFirestore: () => ({ collection: () => ({ add: vi.fn().mockResolvedValue(undefined) }) }),
 }));
-vi.mock("./memory/firestoreRetriever", () => ({ storeMemory: vi.fn() }));
-
 const shortlistCapabilitiesMock = vi.fn();
-vi.mock("./capabilities/registry", () => ({ shortlistCapabilities: shortlistCapabilitiesMock }));
-
 const decideFlowMock = vi.fn();
-vi.mock("./flows/decide", () => ({ decideFlow: decideFlowMock }));
+vi.mock("./ai", () => ({
+  storeMemory: vi.fn(),
+  shortlistCapabilities: shortlistCapabilitiesMock,
+  decideFlow: decideFlowMock,
+}));
 
 const pushDispatchJobMock = vi.fn().mockResolvedValue("job-1");
 const replyToCommandMock = vi.fn().mockResolvedValue(undefined);

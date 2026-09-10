@@ -2,8 +2,7 @@
  * Tunable parameters for the Decision Maker / memory / capability-matching
  * pipeline. Pulled into one place because these are the values most likely
  * to need adjusting as a business's memory history and capability registry
- * grow — see functions/src/flows/decide.ts and
- * functions/src/capabilities/registry.ts for how each is used.
+ * grow — see functions/src/ai.ts for how each is used.
  */
 
 /** How many past memories retrieveRelevantMemories pulls as context for

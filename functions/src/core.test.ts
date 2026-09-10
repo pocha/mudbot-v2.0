@@ -6,13 +6,13 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 const storeMemoryMock = vi.fn().mockResolvedValue("memory-1");
-vi.mock("./memory/firestoreRetriever", () => ({ storeMemory: storeMemoryMock }));
-
 const shortlistCapabilitiesMock = vi.fn();
-vi.mock("./capabilities/registry", () => ({ shortlistCapabilities: shortlistCapabilitiesMock }));
-
 const decideFlowMock = vi.fn();
-vi.mock("./flows/decide", () => ({ decideFlow: decideFlowMock }));
+vi.mock("./ai", () => ({
+  storeMemory: storeMemoryMock,
+  shortlistCapabilities: shortlistCapabilitiesMock,
+  decideFlow: decideFlowMock,
+}));
 
 const pushDispatchJobMock = vi.fn().mockResolvedValue("job-1");
 const replyToCommandMock = vi.fn().mockResolvedValue(undefined);

@@ -1,7 +1,5 @@
 import { getFirestore } from "firebase-admin/firestore";
-import { decideFlow } from "./flows/decide";
-import { storeMemory } from "./memory/firestoreRetriever";
-import { shortlistCapabilities } from "./capabilities/registry";
+import { decideFlow, storeMemory, shortlistCapabilities } from "./ai";
 import { pushDispatchJob, replyToCommand } from "./rtdb";
 import type { EventDoc } from "./types/domain";
 
