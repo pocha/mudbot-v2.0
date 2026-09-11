@@ -8,6 +8,15 @@ copyFileSync("manifest.json", "dist/manifest.json");
 copyFileSync("src/popup/popup.html", "dist/popup.html");
 copyFileSync("src/popup/logo.png", "dist/logo.png");
 
+// esbuild doesn't set process.env.NODE_ENV inside the bundle by default (this
+// is browser code, there's no real process object) — `define` substitutes it
+// as a literal at build time instead, so src/config.ts can check it exactly
+// like every Node-side package does, rather than a separately hand-edited
+// boolean. `npm run build --workspace extension` (default) is production;
+// `NODE_ENV=development npm run build --workspace extension` builds the
+// local-emulator variant — see README's "Local Testing".
+const nodeEnv = process.env.NODE_ENV ?? "production";
+
 const buildOptions = {
   entryPoints: {
     background: "src/background.ts",
@@ -20,6 +29,7 @@ const buildOptions = {
   platform: "browser",
   target: "chrome120",
   sourcemap: true,
+  define: { "process.env.NODE_ENV": JSON.stringify(nodeEnv) },
 };
 
 if (watch) {

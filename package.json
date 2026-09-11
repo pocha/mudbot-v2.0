@@ -10,7 +10,9 @@
     "container"
   ],
   "scripts": {
-    "emulators": "firebase emulators:start --only functions,firestore,database",
+    "postinstall": "npm install --prefix container && npm install --prefix orchestrator",
+    "start": "NODE_ENV=development npm run local-dev --workspace scripts --",
+    "emulators": "firebase emulators:start --only functions,firestore,database,auth,hosting --import=./.emulator-data --export-on-exit=./.emulator-data",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "seed-conversation": "npm run seed-conversation --workspace scripts --"

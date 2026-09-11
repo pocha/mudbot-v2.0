@@ -2,18 +2,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const generateTextMock = vi.fn();
 const stripFencesMock = vi.fn((text: string) => text);
-vi.mock("./gemini", () => ({ generateText: generateTextMock, embedText: vi.fn(), stripFences: stripFencesMock }));
+const registerCapabilityMock = vi.fn().mockResolvedValue("cap-new");
+vi.mock("./ai", () => ({
+  generateText: generateTextMock,
+  embedText: vi.fn(),
+  stripFences: stripFencesMock,
+  registerCapability: registerCapabilityMock,
+  getCapability: vi.fn(),
+}));
 
 const runCapabilityCodeMock = vi.fn();
 vi.mock("./runCode", () => ({ runCapabilityCode: runCapabilityCodeMock }));
 
 vi.mock("./capabilityContext", () => ({ createCapabilityContext: vi.fn().mockReturnValue({ uid: "uid-1" }) }));
 
-const registerCapabilityMock = vi.fn().mockResolvedValue("cap-new");
-vi.mock("./registry", () => ({ registerCapability: registerCapabilityMock, getCapability: vi.fn() }));
-
 const replyToCommandMock = vi.fn().mockResolvedValue(undefined);
-vi.mock("./reply", () => ({ replyToCommand: replyToCommandMock }));
+vi.mock("./firebaseClient", () => ({ replyToCommand: replyToCommandMock, signIn: vi.fn() }));
 
 const { runCreator } = await import("./creator");
 

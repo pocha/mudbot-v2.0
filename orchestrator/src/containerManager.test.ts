@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const execFileMock = vi.fn();
 vi.mock("node:child_process", () => ({ execFile: execFileMock }));
 
-const { isContainerRunning, startContainer, dispatchToContainer } = await import("./containerManager");
+const { isContainerRunning, startContainer, dispatchToContainer, checkDockerReady } = await import("./containerManager");
 
 function mockExecFileSuccess(stdout = "", stderr = "") {
   execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, stdout, stderr));
@@ -54,5 +54,31 @@ describe("dispatchToContainer", () => {
       expect.objectContaining({ timeout: expect.any(Number) }),
       expect.any(Function)
     );
+  });
+});
+
+describe("checkDockerReady", () => {
+  it("resolves when the daemon is up and the image is present", async () => {
+    execFileMock.mockImplementation((_cmd, args, _opts, cb) => {
+      if (args[0] === "info") cb(null, "", "");
+      else cb(null, "sha256abcdef\n", "");
+    });
+    await expect(checkDockerReady("mudbot-container:latest")).resolves.toBeUndefined();
+  });
+
+  it("throws a clear error when the daemon isn't running", async () => {
+    execFileMock.mockImplementation((_cmd, args, _opts, cb) => {
+      if (args[0] === "info") cb(new Error("connect ECONNREFUSED"), "", "");
+      else cb(null, "", "");
+    });
+    await expect(checkDockerReady("mudbot-container:latest")).rejects.toThrow(/doesn't seem to be running/);
+  });
+
+  it("throws a clear error when the image is missing", async () => {
+    execFileMock.mockImplementation((_cmd, args, _opts, cb) => {
+      if (args[0] === "info") cb(null, "", "");
+      else cb(null, "", "");
+    });
+    await expect(checkDockerReady("mudbot-container:latest")).rejects.toThrow(/not found locally/);
   });
 });

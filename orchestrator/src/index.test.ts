@@ -26,6 +26,7 @@ vi.mock("./containerManager", () => ({
   isContainerRunning: isContainerRunningMock,
   startContainer: startContainerMock,
   dispatchToContainer: dispatchToContainerMock,
+  checkDockerReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 const fetchMock = vi.fn();

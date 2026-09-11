@@ -1,7 +1,13 @@
-// The hosted login page (see public/), opened by the popup's Login button when
-// no one's signed in yet — phone-auth's reCAPTCHA can't run inside the
-// extension itself (see README's Known gaps).
-export const HOSTED_LOGIN_URL = "https://pocha.fyi/";
+// build.mjs substitutes this at bundle time via esbuild's `define` — the same
+// NODE_ENV=development signal every other package in this repo keys off for
+// local-emulator mode, rather than a separate hand-edited flag here. See
+// README's "Local Testing".
+export const USE_LOCAL_EMULATOR = process.env.NODE_ENV === "development";
+
+// The hosted login page (see public/login.html), opened by the popup's Login
+// button when no one's signed in yet — phone-auth's reCAPTCHA can't run
+// inside the extension itself (see README's Known gaps).
+export const HOSTED_LOGIN_URL = USE_LOCAL_EMULATOR ? "http://localhost:5000/login.html" : "https://pocha.fyi/login.html";
 
 const LISTENING_STATE_KEY = "mudbot_is_listening";
 // Wall-clock time (unix seconds, matching RawMessage.t) Activate Listen was

@@ -1,7 +1,6 @@
-import { signIn } from "./firebaseClient";
+import { signIn, replyToCommand } from "./firebaseClient";
 import { runExecutor } from "./executor";
 import { runCreator } from "./creator";
-import { replyToCommand } from "./reply";
 
 function requireEnv(name: string): string {
   const value = process.env[name];

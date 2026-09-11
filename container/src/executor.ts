@@ -1,7 +1,7 @@
-import { getCapability } from "./registry";
+import { getCapability } from "./ai";
 import { runCapabilityCode } from "./runCode";
 import { createCapabilityContext } from "./capabilityContext";
-import { replyToCommand } from "./reply";
+import { replyToCommand } from "./firebaseClient";
 
 /**
  * Pure execution, zero LLM calls. This used to make its own call here to

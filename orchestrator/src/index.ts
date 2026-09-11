@@ -1,11 +1,23 @@
 import { config } from "dotenv";
 import { resolve } from "node:path";
+
+// NODE_ENV=development is what `npm start` (repo root) sets before starting
+// this process — the single source of truth for "local mode" that everything
+// downstream (below, and container/src/firebaseClient.ts once NODE_ENV is
+// forwarded into the container's own env) keys off. .env.local is layered on
+// top of .env (not instead of it) — override:true lets its few local-only
+// fields (MINT_TOKEN_URL etc.) take precedence, while secrets that don't
+// need a different value locally (FIREBASE_API_KEY, ORCHESTRATOR_SHARED_KEY,
+// GEMINI_API_KEY) still come from the real, gitignored .env. This mirrors
+// Cloud Functions' own .env.local convention (see functions/.env.example).
+const IS_DEV = process.env.NODE_ENV === "development";
 config({ path: resolve(__dirname, "../.env") });
+if (IS_DEV) config({ path: resolve(__dirname, "../.env.local"), override: true });
 
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithCustomToken } from "firebase/auth";
-import { getDatabase, ref, onChildAdded, remove, type DatabaseReference } from "firebase/database";
-import { isContainerRunning, startContainer, dispatchToContainer } from "./containerManager";
+import { getAuth, connectAuthEmulator, signInWithCustomToken } from "firebase/auth";
+import { getDatabase, connectDatabaseEmulator, ref, onChildAdded, remove, type DatabaseReference } from "firebase/database";
+import { isContainerRunning, startContainer, dispatchToContainer, checkDockerReady } from "./containerManager";
 
 /**
  * The VM orchestrator: purely mechanical, no LLM calls of its own (see the
@@ -40,6 +52,15 @@ const MINT_TOKEN_URL = requireEnv("MINT_TOKEN_URL");
 const ORCHESTRATOR_SHARED_KEY = requireEnv("ORCHESTRATOR_SHARED_KEY");
 const CONTAINER_IMAGE = requireEnv("CONTAINER_IMAGE");
 const GEMINI_API_KEY = requireEnv("GEMINI_API_KEY");
+
+// This process runs directly on the host, so it reaches the emulators at
+// FIREBASE_EMULATOR_HOST (127.0.0.1 in practice, from .env.local). The
+// container it dispatches to runs inside Docker, where "localhost"/127.0.0.1
+// means the container itself — CONTAINER_FIREBASE_EMULATOR_HOST is the
+// separate value (host.docker.internal on Docker Desktop) forwarded into
+// that container's own env instead. See container/src/firebaseClient.ts.
+const FIREBASE_EMULATOR_HOST = IS_DEV ? requireEnv("FIREBASE_EMULATOR_HOST") : "";
+const CONTAINER_FIREBASE_EMULATOR_HOST = IS_DEV ? requireEnv("CONTAINER_FIREBASE_EMULATOR_HOST") : "";
 
 interface DispatchJob {
   uid: string;
@@ -81,6 +102,10 @@ export async function dispatchJob(job: DispatchJob, customToken: string): Promis
     // orchestrator already holding it.
     GEMINI_API_KEY,
   };
+  if (IS_DEV) {
+    env.NODE_ENV = "development";
+    env.FIREBASE_EMULATOR_HOST = CONTAINER_FIREBASE_EMULATOR_HOST;
+  }
   if (job.type === "execute") {
     env.CAPABILITY_ID = job.capabilityId!;
     env.PARAMS = JSON.stringify(job.params ?? {});
@@ -119,14 +144,23 @@ export async function processJob(job: DispatchJob, jobRef: DatabaseReference): P
 }
 
 async function main() {
+  await checkDockerReady(CONTAINER_IMAGE);
+  console.log(`[orchestrator] Docker is ready (${CONTAINER_IMAGE} present).`);
+
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db = getDatabase(app);
+
+  if (IS_DEV) {
+    connectAuthEmulator(auth, `http://${FIREBASE_EMULATOR_HOST}:9099`, { disableWarnings: true });
+    connectDatabaseEmulator(db, FIREBASE_EMULATOR_HOST, 9000);
+    console.log(`[orchestrator] using local emulators at ${FIREBASE_EMULATOR_HOST}`);
+  }
 
   const bootstrapToken = await mintTokenFor("orchestrator-service");
   await signInWithCustomToken(auth, bootstrapToken);
   console.log("[orchestrator] signed in as orchestrator-service, watching dispatchQueue");
 
-  const db = getDatabase(app);
   const dispatchQueueRef = ref(db, "dispatchQueue");
 
   // child_added replays every existing child on first attach, not just new

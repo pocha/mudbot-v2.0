@@ -1,8 +1,7 @@
-import { generateText, stripFences } from "./gemini";
+import { generateText, stripFences, registerCapability } from "./ai";
 import { runCapabilityCode } from "./runCode";
 import { createCapabilityContext } from "./capabilityContext";
-import { registerCapability } from "./registry";
-import { replyToCommand } from "./reply";
+import { replyToCommand } from "./firebaseClient";
 import { CREATOR_MAX_ATTEMPTS } from "./config";
 
 /**

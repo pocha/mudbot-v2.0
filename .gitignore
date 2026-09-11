@@ -2,8 +2,6 @@ node_modules/
 lib/
 dist/
 .env
-.env.*
-!.env.example
 extension/src/firebaseConfig.ts
 extension/*.pem
 *.log
@@ -18,3 +16,5 @@ mudbot-conversation-dump*.json
 mudbot-conversation-dump*.zip
 watobot-v2-firebase-adminsdk-fbsvc-39182ebfa3.json
 container/tmp/
+.emulator-data/
+public/local-test-token.json

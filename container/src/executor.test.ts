@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const getCapabilityMock = vi.fn();
-vi.mock("./registry", () => ({ getCapability: getCapabilityMock, registerCapability: vi.fn() }));
+const generateTextMock = vi.fn();
+vi.mock("./ai", () => ({
+  getCapability: getCapabilityMock,
+  registerCapability: vi.fn(),
+  // Executor must never touch these — Decision Maker already extracted
+  // params before dispatch, see executor.ts's top comment.
+  generateText: generateTextMock,
+  embedText: vi.fn(),
+  stripFences: vi.fn(),
+}));
 
 const runCapabilityCodeMock = vi.fn();
 vi.mock("./runCode", () => ({ runCapabilityCode: runCapabilityCodeMock }));
@@ -10,12 +19,7 @@ const createCapabilityContextMock = vi.fn();
 vi.mock("./capabilityContext", () => ({ createCapabilityContext: createCapabilityContextMock }));
 
 const replyToCommandMock = vi.fn().mockResolvedValue(undefined);
-vi.mock("./reply", () => ({ replyToCommand: replyToCommandMock }));
-
-// Executor must never touch the LLM module — Decision Maker already
-// extracted params before dispatch, see executor.ts's top comment.
-const generateTextMock = vi.fn();
-vi.mock("./gemini", () => ({ generateText: generateTextMock, embedText: vi.fn(), stripFences: vi.fn() }));
+vi.mock("./firebaseClient", () => ({ replyToCommand: replyToCommandMock, signIn: vi.fn() }));
 
 const { runExecutor } = await import("./executor");
 

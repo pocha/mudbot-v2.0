@@ -1,6 +1,6 @@
 import { collection, doc, getDoc, setDoc, updateDoc, addDoc, getDocs } from "firebase/firestore";
 import { db } from "./firebaseClient";
-import { embedText } from "./gemini";
+import { embedText } from "./ai";
 import { RECALL_TOP_K } from "./config";
 
 interface MemoryDoc {

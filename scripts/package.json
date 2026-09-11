@@ -3,13 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "seed-conversation": "ts-node --transpile-only src/seed-conversation.ts"
+    "seed-conversation": "ts-node --transpile-only src/seed-conversation.ts",
+    "local-dev": "ts-node --transpile-only src/local-dev.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "firebase-admin": "^12.7.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"
   }

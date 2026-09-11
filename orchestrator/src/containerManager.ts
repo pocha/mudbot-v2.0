@@ -30,6 +30,25 @@ function containerName(uid: string): string {
   return `mudbot-${uid}`;
 }
 
+/** Checked once at startup (see index.ts's main()) — fails fast with a clear
+ * message instead of letting the process start listening and only discover
+ * Docker isn't ready at the first dispatch. `npm install` already checks and
+ * builds the image (see package.json's postinstall) but that's a
+ * point-in-time check — the daemon could be down, or the image since
+ * removed/pruned, by the time this process actually starts. */
+export async function checkDockerReady(image: string): Promise<void> {
+  try {
+    await execFileAsync("docker", ["info"]);
+  } catch {
+    throw new Error("Docker doesn't seem to be running (`docker info` failed) — start it and try again.");
+  }
+
+  const { stdout } = await execFileAsync("docker", ["images", "-q", image]);
+  if (!stdout.trim()) {
+    throw new Error(`image ${image} not found locally — build it first (see container/'s README section).`);
+  }
+}
+
 export async function isContainerRunning(uid: string): Promise<boolean> {
   const { stdout } = await execFileAsync("docker", [
     "ps",

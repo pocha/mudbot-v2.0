@@ -189,19 +189,29 @@ sudo apt-get install -y nodejs
 `scp` just the `orchestrator/` and `container/` directories — they don't
 depend on `functions/`, `extension/`, or `scripts/` at runtime).
 
-**5. Build the container image:**
+**5. (Optional, for local typecheck/tests only)** `container/`'s own image
+build is self-contained (its Dockerfile does its own `npm install`/`tsc`
+inside the build) — you don't need to install its dependencies on the host
+at all unless you want to run `container`'s tests or get IDE type-checking
+working there too: `cd container && npm install`.
+
+**6. Configure and run the orchestrator** — this also builds the container
+image for you:
 
 ```
-cd container
+cd orchestrator
 npm install
-docker build -t mudbot-container:latest .
 ```
 
-**6. Configure and run the orchestrator:**
+`npm install` here runs a `postinstall` check (`scripts/setup-docker.js`)
+that verifies Docker is running and builds `mudbot-container:latest` from the
+sibling `container/` directory — it fails clearly and stops if Docker isn't
+up yet, rather than silently succeeding and leaving you to discover it later
+when the orchestrator can't dispatch a job. If you're using a different
+`CONTAINER_IMAGE` tag, rebuild/retag manually to match after this runs (see
+the script's comment for why it can't read your `.env` at this point).
 
 ```
-cd ../orchestrator
-npm install
 npm run build
 cp .env.example .env
 ```
@@ -233,6 +243,12 @@ Then:
 ```
 npm start
 ```
+
+`npm start` re-checks Docker readiness itself right before it starts
+listening (belt-and-suspenders with the `npm install` check above — the
+daemon could be down, or the image since removed, by the time you actually
+start it), so a broken Docker setup fails loudly here too rather than at the
+first dispatch.
 
 For anything beyond a one-off test, run it under a process supervisor
 (`systemd`, `pm2`) so it restarts on crash/reboot — not set up by this repo.
@@ -278,33 +294,89 @@ enough to justify that heavier infrastructure.
 
 ## Local Testing
 
-Runs the same server-side deployment on your machine instead of Firebase.
+The whole stack — Functions, Firestore, Realtime Database, Auth, the hosted
+web pages, and (with a one-time setup step below) the VM orchestrator driving
+your own local Docker containers — can run entirely on your machine, without
+touching production Firebase or a real WhatsApp session.
+
+**Two things are never emulated, on purpose:** WhatsApp Web itself (the
+extension's content script only ever matches `web.whatsapp.com` — there's
+nothing to fake there, so exercising the real ingest path still means a real
+WhatsApp Web login) and every Gemini API call (no local/emulated LLM —
+generate/embed calls always hit the real API and consume real quota, same
+cost as production).
+
+**How local mode is switched on:** one signal, `NODE_ENV=development`, drives every package — `npm start` (below) sets it once at the top, and everything downstream keys off it rather than a separate hand-edited flag per package:
+- `functions/` needs no code change at all — Cloud Functions has this convention built in: `.env` loads always, `.env.local` loads *only* for the emulator and overrides everything, and is emulator-only by Firebase's own design (already covered by this repo's `.gitignore`).
+- `orchestrator/` layers `orchestrator/.env.local` on top of `orchestrator/.env` when it sees `NODE_ENV=development` (secrets still come from `.env`; `.env.local` only overrides the handful of fields that genuinely need a different value locally), and forwards that same variable into the container it dispatches to.
+- `container/` (inside Docker) checks the `NODE_ENV` orchestrator forwarded it.
+- `extension/` has no env vars at runtime (it's a bundled browser extension) — `build.mjs` substitutes `NODE_ENV` as a literal via esbuild's `define` at build time instead, so `src/config.ts` can check it exactly like everywhere else.
+- `public/login.js`/`chat.js` are the one exception — no build step exists for raw static files, so they detect local mode at runtime instead, by checking `location.hostname`.
+
+### One-time setup
+
+1. **Start Docker**, then run `npm install` at the repo root (if you haven't already, or run it again) — this cascades into `container/` and `orchestrator/` (see root `package.json`'s `postinstall`), and orchestrator's own install checks Docker and builds `mudbot-container:latest` automatically. See Deployment part D for what this is actually doing under the hood.
+2. **Orchestrator's real `.env`** (required either way, local mode or not): `cp orchestrator/.env.example orchestrator/.env` and fill it in. Nothing else to do here — `orchestrator/.env.local` is already committed with working local defaults (points `MINT_TOKEN_URL` at the local Functions emulator, sets the Docker-host values) and gets layered on top of `.env` automatically whenever `NODE_ENV=development`. Only touch `.env.local` if your setup genuinely differs from its defaults (a different project id than `watobot-v2`, non-Docker-Desktop host, etc).
+3. **Extension for local mode**: `NODE_ENV=development npm run build --workspace extension`, then reload it unpacked in `chrome://extensions`. (Plain `npm run build --workspace extension`, no `NODE_ENV`, is what real deploys use — same command either way, just the env var.)
+4. **(Optional) a test phone number**, only if you specifically want to exercise the real login flow rather than the automatic one `npm start` sets up by default (see below): once emulators are running, open `http://127.0.0.1:4000/auth` and add a phone number with a fixed code (e.g. `+1 650-555-3434` / `123456`) — the Auth Emulator skips real reCAPTCHA/SMS entirely once a page connects to it, so this fake number is all sign-in needs. Persists across restarts, so this is genuinely one-time.
+
+### Running it
 
 ```
-npm run emulators
+npm start
+# or: npm start -- --userid my-uid
 ```
 
-Starts the Firestore + Realtime Database + Functions emulators (`firebase.json`)
-so `/ingest` and `/instruct` are callable locally, with `functions/lib`
-rebuilt via the `predeploy` hook. If also testing the extension against this,
-point its `API_BASE_URL` (`extension/src/config.ts`) at the emulator's local
-URL, and set `FIRESTORE_EMULATOR_HOST` in any local script's environment to
-hit the same emulated Firestore.
+Sets `NODE_ENV=development`, starts the Firestore + Realtime Database +
+Functions + Auth + Hosting emulators (`firebase.json`), waits for them to come
+up, seeds `local-test-uid` (or whatever `--userid` you passed — same uid is
+used for both) with the most recent 30 messages from a
+`mudbot-conversation-dump-*.json` in the repo root if one exists (skipped,
+harmlessly, if not — see "Offline replay" below), then starts the orchestrator
+(skipped with a warning if `orchestrator/.env` isn't set up yet, rather
+than crashing). Emulator state — seeded memories,
+capabilities, the Auth Emulator's test phone number — persists in a gitignored
+`.emulator-data/` between runs, so restarting doesn't lose it (and re-seeding
+is itself skipped once a uid already has memories, unless `--force`). Ctrl+C
+stops everything together.
 
-## Offline Testing (no live WhatsApp session needed)
+It also mints a signed-in session for that same uid against the Auth Emulator
+and drops it at `public/local-test-token.json` (gitignored, regenerated each
+run, cleaned up on Ctrl+C) — `chat.js` picks it up automatically. That means
+**just opening `http://localhost:5000/` lands you straight on the chat page,
+already signed in** — no login step needed for routine local testing. The
+real login flow still works exactly as it does in production if you want to
+test it specifically (skip the auto-login by not running `npm start`, or by
+deleting that file): extension popup → **Login** → `http://localhost:5000/login.html`
+against your test phone number (Optional setup step 4 above) → redirects to
+the chat page the same way.
 
-Builds on Local Testing above (emulator running):
+Either way, once you're on the chat page, type a message there to exercise
+the full explicit-command loop (Decision Maker → dispatchQueue → orchestrator
+→ your local Docker container → Executor/Creator → reply), or open real
+`web.whatsapp.com` with the extension active to exercise the passive ingest
+path for real.
+
+`npm run emulators` (without the seeding/orchestrator/extension pieces) still
+works on its own if you just want the raw emulator suite.
+
+### Offline replay (no live WhatsApp session needed)
 
 1. **Dump conversations**: extension popup → "Load recent chats" (shows the N
    most recently active chats, configurable, default 50) → deselect anything
    that isn't a business conversation → "Dump selected" → downloads
-   `mudbot-conversation-dump-*.json`.
-2. **Replay it**: `npm run seed-conversation -- <uid> path/to/dump.json` — runs
-   every message through the real `ingestCore` pipeline, in true chronological
-   order across all dumped chats, and prints what happened (memory stored,
-   synthesis produced) per message.
+   `mudbot-conversation-dump-*.json` into your Downloads folder — move it to
+   the repo root for `npm start` to pick it up automatically, or point at it
+   directly:
+2. **Replay it**: `npm run seed-conversation -- <uid> path/to/dump.json [--limit N] [--force]`
+   — pushes each message onto the real `ingestQueue/{uid}` RTDB path (the
+   same path the extension itself uses) and waits for the real
+   `onIngestQueueCreated` trigger to process it before moving to the next one,
+   in true chronological order across all dumped chats. `--limit N` replays
+   only the N most recent messages (full replays mean N real embedding calls);
+   `--force` reseeds even if that uid already has memories.
 
-Talks to Firestore directly via the Admin SDK — set
-`FIRESTORE_EMULATOR_HOST=localhost:8080` first to run against the emulator
-instead of your real project. LLM/embedding calls always hit the real Gemini
-API regardless (not mocked).
+Set `FIRESTORE_EMULATOR_HOST=localhost:8080` and `FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000`
+first to target the emulator instead of a real project (the Admin SDK
+auto-detects these; already set for you if you're running this via `npm start`'s
+own seed step). LLM/embedding calls always hit the real Gemini API regardless.
